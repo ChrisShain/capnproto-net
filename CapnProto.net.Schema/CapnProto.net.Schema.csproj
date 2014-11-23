@@ -51,6 +51,12 @@
     <Reference Include="System" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Xml" />
+    <Reference Include="xunit">
+      <HintPath>..\packages\xunit.1.9.2\lib\net20\xunit.dll</HintPath>
+    </Reference>
+    <Reference Include="xunit.extensions">
+      <HintPath>..\packages\xunit.extensions.1.9.2\lib\net20\xunit.extensions.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CapnProto.net\CapnProto.net.csproj">
@@ -65,11 +71,16 @@
     <Compile Include="..\CapnProto.net\Properties\AssemblyInfo.cs">
       <Link>AssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="CapnpParser.cs" />
+    <Compile Include="CapnpParserTests.cs" />
     <Compile Include="CodeWriter.cs" />
     <Compile Include="CSharpStructWriter.cs" />
     <Compile Include="Schema.cs" />
     <Compile Include="Schema.designer.cs" />
     <Compile Include="UnionStub.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
