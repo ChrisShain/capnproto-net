@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 // Todo:
 // - definitions of whitespace, identifiers (e.g. \w is probably not good)
@@ -15,419 +13,11 @@ using System.Text.RegularExpressions;
 //   * parse unresolved default values
 // - test, test, test
 // - compare with the c++ impl intsead of just the examples
+// - validate ordinals, they cannot contain holes (e.g. number @3 after @1)
 
 namespace CapnProto.Schema.Parser
 {
-   class Field
-   {
-      public String Name;
-      public Int32 Number;
-      public CapnpType Type;
-      public Value Value;
-
-      public Annotation Annotation;
-
-      public override string ToString()
-      {
-         return String.Format("Field: {0} @{1} :{2} = {3} {4}", Name, Number, Type, Value, Annotation);
-      }
-   }
-
-   class Method
-   {
-      public String Name;
-      public Int32 Number;
-
-      //public CapnpLambda Type;
-      public Parameter[] Arguments;
-      public Parameter ReturnType;
-
-      public Annotation Annotation;
-
-      public override string ToString()
-      {
-         return Name + " @" + Number + "(" + String.Join(", ", (IEnumerable<Parameter>)Arguments) + ") -> (" + ReturnType + ")";
-      }
-   }
-
-   class Parameter
-   {
-      public String Name;
-      public CapnpType Type;
-      public Value DefaultValue;
-      public Annotation Annotation;
-
-      public override string ToString()
-      {
-         var d = DefaultValue == null ? "" : " = " + DefaultValue;
-         var a = Annotation == null ? "" : " " + Annotation;
-         return Name + " :" + Type + d + a;
-      }
-   }
-
-   class Annotation
-   {
-      public String Name;
-
-      public Value Argument;
-
-      public override string ToString()
-      {
-         var args = Argument == null ? "" : "(" + Argument + ")";
-         return "$" + Name + args;
-      }
-   }
-
-   class _ParsedCapnpSource
-   {
-      public Int64 Id;
-
-      public IEnumerable<CapnpStruct> Structs;
-      public IEnumerable<CapnpInterface> Interfaces;
-      public IEnumerable<CapnpConst> Constants;
-      public IEnumerable<CapnpEnum> Enumerations;
-      public IEnumerable<CapnpAnnotation> AnnotationDefs;
-
-      // todo: does order matter? i.e. can we use a name before the using?
-      public CapnpUsing[] Usings;
-
-      // todo: clean up enum/array stuff
-      public Annotation[] Annotations;
-
-      // todo: clean up ToStrings, lineendings (dont assume crlf)
-      public override string ToString()
-      {
-         return "Compiled Source: \r\n" +
-                "Id = " + Id + "\r\n" +
-                String.Join("\r\n", (IEnumerable<CapnpStruct>)Structs) + "\r\n" +
-                String.Join("\r\n", (IEnumerable<CapnpInterface>)Interfaces) + "\r\n" +
-                String.Join("\r\n", (IEnumerable<CapnpConst>)Constants) + "\r\n" +
-                String.Join("\r\n", (IEnumerable<CapnpEnum>)Enumerations) + "\r\n" +
-                String.Join("\r\n", (IEnumerable<CapnpAnnotation>)AnnotationDefs) + "\r\n" +
-                String.Join("\r\n", (IEnumerable<Annotation>)Annotations);
-      }
-   }
-
-   enum TypeKind
-   {
-      Primitive,
-      List,
-      Struct
-   }
-
-   class Value
-   {
-      public Value(CapnpType type)
-      {
-         Type = type;
-      }
-
-      public readonly CapnpType Type;
-   }
-
-   class UnresolvedValue : Value
-   {
-      public UnresolvedValue(CapnpReference referenceType) : base(referenceType) { }
-
-      public Int32 Position; // todo
-      public String RawData;
-
-      public override string ToString()
-      {
-         return "Unresolved: \"" + RawData + "\"";
-      }
-   }
-
-   class VoidValue : Value
-   {
-      public VoidValue() : base(CapnpType.Void) { }
-
-      public override string ToString()
-      {
-         return "«void»";
-      }
-   }
-
-   class TextValue : Value
-   {
-      public TextValue() : base(CapnpType.Text) { }
-      public String Value;
-
-      public override string ToString()
-      {
-         return "\"" + Value + "\"";
-      }
-   }
-
-   class BoolValue : Value
-   {
-      public BoolValue() : base(CapnpType.Bool) { }
-      public Boolean Value;
-
-      public override string ToString()
-      {
-         return Value ? "true" : "false";
-      }
-   }
-
-   class Int32Value : Value
-   {
-      public Int32Value() : base(CapnpType.Int32) { }
-      public Int32 Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
-   }
-
-   class ListValue : Value
-   {
-      public ListValue(CapnpList type) : base(type) { }
-
-      public List<Value> Values;
-
-      public override string ToString()
-      {
-         return "[" + String.Join(", ", Values) + "]";
-      }
-   }
-
-   class StructValue : Value
-   {
-      public StructValue(CapnpStruct type) : base(type) { }
-      public Dictionary<String, Value> FieldValues;
-
-      public override string ToString()
-      {
-         return "struct value todo";
-      }
-   }
-
-   enum PrimitiveName
-   {
-      // todo
-      AnyPointer, Void, Bool, Int8, Int16, Int32, Text, Data
-   }
-
-   class CapnpType
-   {
-      protected readonly CapnpType _parameter;
-      protected readonly TypeKind _kind;
-
-      protected CapnpType() { _kind = TypeKind.Primitive; }
-      protected CapnpType(TypeKind kind) { _kind = kind; }
-      protected CapnpType(TypeKind kind, CapnpType parameter)
-         : this(kind)
-      {
-         Debug.Assert(kind == TypeKind.List);
-         _parameter = parameter;
-      }
-
-      // probably move
-      public static readonly CapnpPrimitive AnyPointer = new CapnpPrimitive(PrimitiveName.AnyPointer);
-      public static readonly CapnpPrimitive Void = new CapnpPrimitive(PrimitiveName.Void);
-      public static readonly CapnpPrimitive Bool = new CapnpPrimitive(PrimitiveName.Bool);
-      public static readonly CapnpPrimitive Int8 = new CapnpPrimitive(PrimitiveName.Int8);
-      public static readonly CapnpPrimitive Int16 = new CapnpPrimitive(PrimitiveName.Int16);
-      public static readonly CapnpPrimitive Int32 = new CapnpPrimitive(PrimitiveName.Int32);
-      public static readonly CapnpPrimitive Text = new CapnpPrimitive(PrimitiveName.Text);
-      public static readonly CapnpPrimitive Data = new CapnpPrimitive(PrimitiveName.Data);
-
-      public static readonly CapnpType Unit = new CapnpType();
-   }
-
-   class CapnpPrimitive : CapnpType
-   {
-      public readonly PrimitiveName Kind;
-
-      public CapnpPrimitive(PrimitiveName kind) { Kind = kind; }
-
-      public override string ToString()
-      {
-         return Kind.ToString();
-      }
-   }
-
-   class CapnpList : CapnpType
-   {
-      public CapnpType Parameter;
-
-      public override string ToString()
-      {
-         return "List(" + Parameter.ToString() + ")";
-      }
-   }
-
-   enum AnnotationTypes
-   {
-      File, Struct, Interface,
-      Any
-   }
-
-   // todo: we cannot currently handle struct typed annotations as the syntax is $foo(...) rather than $foo( (.... ) ) (ugly, of course).
-   class CapnpAnnotation : CapnpType
-   {
-      public String Name;
-
-      public CapnpType ArgumentType;
-
-      // todo: move to base?
-      public Annotation Annotation;
-
-      public Int64? Id;
-
-      public AnnotationTypes[] Targets;
-
-      public override string ToString()
-      {
-         var arg = ArgumentType == null ? "" : "(" + ArgumentType + ")";
-         return "Annotation: " + Name + " " + arg + " " + Annotation + " targets " + String.Join(", ", (IEnumerable<AnnotationTypes>)Targets);
-      }
-   }
-
-   class CapnpUsing : CapnpType
-   {
-      public String Name; // can be null
-      public CapnpType Target;
-
-      public override String ToString()
-      {
-         return "Using: " + Name + " = " + Target;
-      }
-   }
-
-   class CapnpImport : CapnpType
-   {
-      public String File;
-
-      public CapnpType Type;
-
-      public override string ToString()
-      {
-         return Type == null ? "Import: " + File :
-                               "Import: " + File + "." + Type;
-      }
-   }
-
-   class CapnpComposite : CapnpType
-   {
-      public CapnpType[] NestedTypes;
-
-      public Annotation Annotation;
-      public Int64? Id;
-
-      public CapnpUsing[] Usings;
-
-      public override string ToString()
-      {
-         return String.Join("\r\n", (IEnumerable<CapnpType>)NestedTypes);
-      }
-   }
-
-   class CapnpStruct : CapnpComposite
-   {
-      public String Name;
-
-      public Field[] Fields;
-
-      public override string ToString()
-      {
-         var annot = Annotation == null ? "" : Annotation.ToString();
-         return "Struct " + Name + " " + annot + "\r\n   " + String.Join("\r\n   ", (IEnumerable<Field>)Fields) + "\r\n\r\n" + base.ToString();
-      }
-   }
-
-   class CapnpConst : CapnpType
-   {
-      public String Name;
-      public Value Value;
-
-      public Annotation Annotation;
-
-      public override string ToString()
-      {
-         var a = Annotation == null ? "" : Annotation + " ";
-         return "Const " + Name + " " + a + "=" + Value;
-      }
-   }
-
-   class CapnpReference : CapnpType
-   {
-      public String FullName;
-
-      public override string ToString()
-      {
-         return "Reference to " + FullName;
-      }
-   }
-
-   class CapnpEnum : CapnpType
-   {
-      public String Name;
-
-      public Annotation Annotation;
-      public Int64? Id;
-
-      public class Enumerant
-      {
-         public String Name;
-         public Int32 Number;
-
-         public Annotation Annotation;
-
-         public override string ToString()
-         {
-            var a = Annotation == null ? "" : " " + Annotation;
-            return Name + " @" + Number + a;
-         }
-      }
-
-      public Enumerant[] Enumerations;
-
-      public override string ToString()
-      {
-         return "Enum " + Name + " " + Annotation + "\r\n   " + String.Join("\r\n   ", (IEnumerable<Enumerant>)Enumerations);
-      }
-   }
-
-   class CapnpInterface : CapnpComposite
-   {
-      public String Name;
-
-      // todo: validaiotn that these are interfaces etc
-      public CapnpType[] BaseInterfaces = new CapnpType[0]; // empty<>.ar todo
-
-      public Method[] Methods;
-
-      public override string ToString()
-      {
-         var extends = BaseInterfaces.Length == 0 ? "" : " extends " + String.Join(", ", (IEnumerable<CapnpType>)BaseInterfaces);
-         return "Interface " + Name + extends + " " + Annotation + "\r\n   " + String.Join("\r\n   ", (IEnumerable<Method>)Methods) + "\r\n\r\n" + base.ToString();
-      }
-   }
-
-   class CapnpUnion : CapnpType
-   {
-      public Field[] Fields;
-
-      public override string ToString()
-      {
-         return "Union:\r\n" + String.Join("\r\n", (IEnumerable<Field>)Fields);
-      }
-   }
-
-   class CapnpGroup : CapnpType
-   {
-      public Field[] Fields;
-
-      public override string ToString()
-      {
-         return "Group:\r\n" + String.Join("\r\n", (IEnumerable<Field>)Fields);
-      }
-   }
-
-   class CapnpParser
+   partial class CapnpParser
    {
       private readonly String _source;
       private Int32 pos;
@@ -449,7 +39,7 @@ namespace CapnProto.Schema.Parser
          return null;
       }
 
-      public _ParsedCapnpSource Parse()
+      public CapnpModule Parse()
       {
          pos = 0;
          _AdvanceWhiteSpace();
@@ -480,7 +70,7 @@ namespace CapnProto.Schema.Parser
                   case "annotation": annotDefs.Add(_ParseAnnotationDeclaration()); break;
                   case "using": usings.Add(_ParseUsing()); break;
 
-                  default: throw new Exception("todo: " + token);
+                  default: _Error("Unexpected token '{0}'.", token); break;
                }
             else if (_Peek("$"))
             {
@@ -501,17 +91,33 @@ namespace CapnProto.Schema.Parser
          if (pos < _source.Length - 1)
             _Error("Expected end of input.");
 
-         return new _ParsedCapnpSource
+         return new CapnpModule
          {
             Id = id.Value, // todo: error
-            Constants = consts,
-            Structs = structs,
-            Interfaces = interfaces,
-            Enumerations = enums,
-            AnnotationDefs = annotDefs,
+            Constants = consts.ToArray(),
+            Structs = structs.ToArray(),
+            Interfaces = interfaces.ToArray(),
+            Enumerations = enums.ToArray(),
+            AnnotationDefs = annotDefs.ToArray(),
             Annotations = annotations.ToArray(),
-            Usings = usings.ToArray()
+            Usings = usings.ToArray(),
          };
+      }
+
+      // For now split, may combine into something later.
+      public CapnpModule ProcessParsedSource(CapnpModule source, Func<String, String> getImportSource)
+      {
+         new ImportResolutionVisitor(getImportSource).VisitModule(source);
+
+         new ReferenceResolutionVisitor(source).ResolveReferences();
+
+         new UnresolvedValueVisitor().VisitModule(source);
+
+         new ConstRefVisitor().VisitModule(source);
+
+         new ValidationVisitor().VisitModule(source);
+
+         return source;
       }
 
       private CapnpConst _ParseConst()
@@ -544,11 +150,11 @@ namespace CapnProto.Schema.Parser
 
          var targets = new List<AnnotationTypes>();
          if (_OptAdvance("*"))
-            targets.Add(AnnotationTypes.Any);
+            targets.Add(AnnotationTypes.any);
          else
          {
             String target;
-            while (_OptAdvanceOneOf(out target, "file", "struct", "field", "union", "enumerant", "enum", "method", "parameter", "annotation", "const", "interface"))
+            while (_OptAdvanceOneOf(out target, "file", "struct", "field", "union", "enumerant", "enum", "method", "param", "annotation", "const", "interface", "group"))
             {
                targets.Add((AnnotationTypes)Enum.Parse(typeof(AnnotationTypes), target)); // todo error
                if (!_OptAdvance(",")) break;
@@ -582,17 +188,19 @@ namespace CapnProto.Schema.Parser
          if (!_OptAdvance("$")) return null;
 
          var name = _ParseName();
+         var decl = new CapnpReference { FullName = name };
 
          Value argument = null;
          if (_OptAdvance("(") && !_OptAdvance(")"))
          {
-            argument = _ParseDefaultValue(new CapnpReference { FullName = name });
+            // todo: can this have multiple arguments?
+            argument = _ParseDefaultValue(null);
             _Advance(")");
          }
 
          return new Annotation
          {
-            Name = name,
+            Declaration = decl,
             Argument = argument
          };
       }
@@ -682,7 +290,8 @@ namespace CapnProto.Schema.Parser
             Id = id,
             Fields = block.Where(o => o is Field).Cast<Field>().ToArray(),
             Annotation = annotation,
-            NestedTypes = block.Where(o => o is CapnpType).Cast<CapnpType>().ToArray()
+            NestedTypes = block.Where(o => o is CapnpType && !(o is CapnpUsing)).Cast<CapnpType>().ToArray(),
+            Usings = block.Where(o => o is CapnpUsing).Cast<CapnpUsing>().ToArray()
          };
       }
 
@@ -892,10 +501,21 @@ namespace CapnProto.Schema.Parser
          switch (text)
          {
             // Builtin types.
+            case "Int8": return CapnpType.Int8;
+            case "Int16": return CapnpType.Int16;
             case "Int32": return CapnpType.Int32;
+            case "Int64": return CapnpType.Int64;
+            case "UInt8": return CapnpType.UInt8;
+            case "UInt16": return CapnpType.UInt16;
+            case "UInt32": return CapnpType.UInt32;
+            case "UInt64": return CapnpType.UInt64;
+            case "Float32": return CapnpType.Float32;
+            case "Float64": return CapnpType.Float64;
             case "Text": return CapnpType.Text;
+            case "Data": return CapnpType.Data;
             case "Void": return CapnpType.Void;
             case "Bool": return CapnpType.Bool;
+            case "AnyPointer": return CapnpType.AnyPointer;
 
             case "union": return _ParseGroupOrUnion("union");
             case "group": return _ParseGroupOrUnion("group");
@@ -974,40 +594,90 @@ namespace CapnProto.Schema.Parser
          return _source.Substring(start, pos - start);
       }
 
+      public static Value ParseValue(String rawValue, CapnpType type)
+      {
+         var parser = new CapnpParser(rawValue);
+         return parser._ParseDefaultValue(type);
+      }
+
       private Value _ParseDefaultValue(CapnpType type)
       {
          if (type is CapnpPrimitive)
          {
             if (type == CapnpType.Bool)
             {
-               // var result = _Choice(s => Boolean.Parse(s), "true", "false") ?
+               var token = _ParseName();
 
-               if (_OptAdvance("true")) return new BoolValue { Value = true };
-               if (_OptAdvance("false")) return new BoolValue { Value = false };
-               throw new Exception();
+               if (token == "true") return new BoolValue { Value = true };
+               else if (token == "false") return new BoolValue { Value = false };
+
+               return new ConstRefValue(type)
+               {
+                  FullConstName = token
+               };
             }
 
-            if (type == CapnpType.Int32)
+            if (type.IsNumeric)
             {
-               return new Int32Value { Value = _ParseInt32() };
+               // todo: can we have doubles .2 (i.e. no 0?)
+               if (_PeekExpr("\\d|-"))
+               {
+                  if (type == CapnpType.Int8)
+                     return new Int8Value { Value = (SByte)_ParseInt32() }; // todo: pass size to parseIntxx method
+                  else if (type == CapnpType.Int16)
+                     throw new Exception("todo: int16");
+                  else if (type == CapnpType.Int32)
+                     return new Int32Value { Value = _ParseInt32() };
+                  else if (type == CapnpType.Int64)
+                     return new Int64Value { Value = _ParseInt64() };
+                  else if (type == CapnpType.UInt8)
+                     return new UInt8Value { Value = (Byte)_ParseInt32() }; // tood
+                  else if (type == CapnpType.UInt16)
+                     return new UInt16Value { Value = (UInt16)_ParseInt32() }; // todo: ensure this fits
+                  else if (type == CapnpType.UInt32)
+                     return new UInt32Value { Value = (UInt32)_ParseInt32() };
+                  else if (type == CapnpType.UInt64)
+                     return new UInt64Value { Value = (UInt64)_ParseInt64() };
+                  else if (type == CapnpType.Float32)
+                     return new Float32Value { Value = _ParseFloat32() };
+                  else if (type == CapnpType.Float64)
+                     return new Float64Value { Value = _ParseFloat32() }; // < todo
+
+                  throw new Exception("numeric type not yet finished: " + type);
+               }
+               else
+                  return new ConstRefValue(type)
+                  {
+                     FullConstName = _ParseName()
+                  };
             }
 
             if (type == CapnpType.Void)
             {
-               _Advance("void");
-               return new VoidValue(); // singleton?
+               var token = _ParseName();
+               if (token == "void") return new VoidValue();
+               return new ConstRefValue(type) { FullConstName = token };
             }
 
             if (type == CapnpType.Text)
             {
-               return new TextValue { Value = _ParseText() };
+               if (_Peek("\""))
+                  return new TextValue { Value = _ParseText() };
+               return new ConstRefValue(type) { FullConstName = _ParseName() };
             }
+
+            if (type == CapnpType.Data)
+               throw new Exception("todo: what does a data value look like?");
+
+            if (type == CapnpType.AnyPointer)
+               throw new Exception("todo: can a void* have a default value?");
 
             throw new Exception("todo");
          }
          else if (type is CapnpList)
          {
-            _Advance("[");
+            if (!_OptAdvance("["))
+               return new ConstRefValue(type) { FullConstName = _ParseName() };
 
             var listType = (CapnpList)type;
             var values = new List<Value>();
@@ -1023,7 +693,8 @@ namespace CapnProto.Schema.Parser
          }
          else if (type is CapnpStruct)
          {
-            _Advance("(");
+            if (!_OptAdvance("("))
+               return new ConstRefValue(type) { FullConstName = _ParseName() };
 
             var defs = new Dictionary<String, Value>();
             while (_source[pos] != ')')
@@ -1037,13 +708,19 @@ namespace CapnProto.Schema.Parser
                fldType = @struct.Fields.Single(f => f.Name == name).Type; // todo error blah
 
                defs.Add(name, _ParseDefaultValue(fldType));
+               if (!_OptAdvance(",")) break;
             }
 
             _Advance(")");
+
+            return new StructValue((CapnpStruct)type)
+            {
+               FieldValues = defs
+            };
          }
-         else if (type is CapnpReference)
+         else if (type is CapnpReference || type == null)
          {
-            var result = new UnresolvedValue((CapnpReference)type)
+            var result = new UnresolvedValue(type)
             {
                Position = pos,
                RawData = _ParseRawValue() // endIdx < 0 ? null : _source.Substring(pos, endIdx.Value - pos - 1)
@@ -1052,7 +729,7 @@ namespace CapnProto.Schema.Parser
             return result;
          }
 
-         throw new Exception("todo");
+         throw new Exception("todo: def value for " + type.GetType().FullName);
       }
 
       private Int32 _ParseInt32()
@@ -1103,7 +780,9 @@ namespace CapnProto.Schema.Parser
 
       private Single _ParseFloat32()
       {
-         throw new Exception();
+         // todo: this is obv. wrong
+         _AdvanceExpr(@"\d|\.|e|E");
+         return -7.42f;
       }
 
       private CapnpEnum _ParseEnum()
@@ -1140,172 +819,8 @@ namespace CapnProto.Schema.Parser
             Name = name,
             Id = id,
             Annotation = annotation,
-            Enumerations = fields.ToArray()
+            Enumerants = fields.ToArray()
          };
       }
-
-
-
-      #region Utils
-
-      private Exception _Error(String error, params Object[] args)
-      {
-         throw new Exception(String.Format(error, args) + " at " + pos); // < todo
-      }
-
-      private static Boolean _IsWhiteSpace(Char c)
-      {
-         return Char.IsWhiteSpace(c);
-      }
-
-      private void _AdvanceWhiteSpace()
-      {
-         for (; pos < _source.Length; pos++)
-            if (_source[pos] == '#')
-               _AdvanceComment();
-            else if (!_IsWhiteSpace(_source[pos]))
-               break;
-      }
-
-      private void _AdvanceComment()
-      {
-         Debug.Assert(_source[pos] == '#');
-         for (; pos < _source.Length; pos++)
-            if (_source[pos] == '\n') break;
-      }
-
-      private void _Expect(String token)
-      {
-         if (pos + token.Length >= _source.Length)
-            _Error("Expected '{0}'.", token);
-
-         for (var i = 0; i < token.Length; i++)
-            if (token[i] != _source[pos + i])
-               _Error("Expected '{0}'.", token);
-      }
-
-      private void _Advance(String token, Boolean skipWhiteSpace = true)
-      {
-         _Expect(token);
-         pos += token.Length;
-
-         if (skipWhiteSpace)
-            _AdvanceWhiteSpace();
-      }
-
-      private String _AdvanceOneOf(String firstToken, params String[] tokens)
-      {
-         // todo -> use _OptAd..
-         if (_OptAdvance(firstToken)) return firstToken;
-         foreach (var t in tokens.Where(_t => _OptAdvance(_t)))
-            return t;
-
-         throw _Error("Expected one of: {0}, {1}", firstToken, String.Join(", ", tokens));
-      }
-
-      private Boolean _OptAdvanceOneOf(out String foundToken, params String[] tokens)
-      {
-         foundToken = null;
-         if (tokens == null || tokens.Length == 0) return false;
-         foreach (var t in tokens.Where(_t => _OptAdvance(_t)))
-         {
-            foundToken = t;
-            return true;
-         }
-         return false;
-      }
-
-      private String _AdvanceUntil(char match)
-      {
-         for (var start = pos; pos < _source.Length; pos++)
-            if (_source[pos] == match)
-               return _source.Substring(start, 1 + pos - start);
-
-         throw _Error("Expected '{0}', unexpected end of input.", match);
-      }
-
-      // todo: better error, pass on error message?
-      private String _AdvanceExpr(String regex)
-      {
-         String result = null;
-         if (!_OptAdvanceExpr(regex, out result))
-            _Error("Expected regex match: " + regex);
-         return result;
-      }
-
-      private Boolean _OptAdvanceExpr(String regex, out String token)
-      {
-         token = null;
-         var r = new Regex("^" + regex, RegexOptions.CultureInvariant);
-         var m = r.Match(_source.Substring(pos)); // todo
-         if (!m.Success) return false;
-         pos += m.Length;
-         _AdvanceWhiteSpace();
-         token = m.Value;
-         return true;
-      }
-
-      private Boolean _OptAdvance(String token, Int32 from)
-      {
-         var curPos = pos;
-         pos = from;
-         var b = _OptAdvance(token);
-         if (b) return true;
-         pos = curPos;
-         return false;
-      }
-
-      // Advances only if there is whitespace following the given token.
-      private Boolean _OptAdvanceToken(String token)
-      {
-         var start = pos;
-         if (!_OptAdvance(token)) return false;
-         if (pos == start + token.Length)
-         {
-            pos = start;
-            return false;
-         }
-         return true;
-      }
-
-      private Boolean _OptAdvance(String token, Boolean skipWhiteSpace = true, Boolean requireWhiteSpace = false)
-      {
-         Debug.Assert(skipWhiteSpace || !requireWhiteSpace);
-
-         if (pos + token.Length >= _source.Length) return false;
-
-         var i = 0;
-         for (i = 0; i < token.Length; i++)
-            if (token[i] != _source[pos + i]) return false;
-
-         pos += i;
-
-         if (skipWhiteSpace)
-         {
-            var prews = pos;
-            _AdvanceWhiteSpace();
-
-            if (requireWhiteSpace && prews == pos)
-            {
-               pos = prews - i;
-               return false;
-            }
-         }
-
-         return true;
-      }
-
-      private Boolean _Peek(String token)
-      {
-         var c = pos;
-         if (_OptAdvance(token, skipWhiteSpace: false))
-         {
-            pos = c;
-            return true;
-         }
-         return false;
-      }
-
-      #endregion
    }
 }

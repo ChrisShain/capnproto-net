@@ -71,10 +71,20 @@
     <Compile Include="..\CapnProto.net\Properties\AssemblyInfo.cs">
       <Link>AssemblyInfo.cs</Link>
     </Compile>
-    <Compile Include="CapnpParser.cs" />
-    <Compile Include="CapnpParserTests.cs" />
+    <Compile Include="Parser\CapnpParser.cs" />
+    <Compile Include="Parser\CapnpParserTests.cs" />
     <Compile Include="CodeWriter.cs" />
     <Compile Include="CSharpStructWriter.cs" />
+    <Compile Include="Parser\CapnpParser.Parsing.cs" />
+    <Compile Include="Parser\CapnpTypes.cs" />
+    <Compile Include="Parser\CapnpValues.cs" />
+    <Compile Include="Parser\CapnpVisitor.cs" />
+    <Compile Include="Parser\ConstRefVisitor.cs" />
+    <Compile Include="Parser\ImportResolutionVisitor.cs" />
+    <Compile Include="Parser\ReferenceResolutionVisitor.cs" />
+    <Compile Include="Parser\ScopeTrackingVisitor.cs" />
+    <Compile Include="Parser\UnresolvedValueVisitor.cs" />
+    <Compile Include="Parser\ValidationVisitor.cs" />
     <Compile Include="Schema.cs" />
     <Compile Include="Schema.designer.cs" />
     <Compile Include="UnionStub.cs" />
