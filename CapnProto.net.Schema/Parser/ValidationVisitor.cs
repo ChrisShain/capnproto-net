@@ -8,6 +8,7 @@ namespace CapnProto.Schema.Parser
    class ValidationVisitor : CapnpVisitor
    {
       // todo, first collect some rules
+      // - numbers should not contain any 'holes'
 
       // This should never happen with a correct parser.
       protected internal override CapnpType VisitReference(CapnpReference @ref)

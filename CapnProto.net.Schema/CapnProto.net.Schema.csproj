@@ -76,6 +76,7 @@
     <Compile Include="CodeWriter.cs" />
     <Compile Include="CSharpStructWriter.cs" />
     <Compile Include="Parser\CapnpParser.Parsing.cs" />
+    <Compile Include="Parser\CapnpParserUtils.cs" />
     <Compile Include="Parser\CapnpTypes.cs" />
     <Compile Include="Parser\CapnpValues.cs" />
     <Compile Include="Parser\CapnpVisitor.cs" />
@@ -91,6 +92,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="Parser\FullSyntax.capnp" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -1,6 +1,7 @@
 ﻿using CapnProto.Schema.Parser;
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using Xunit;
 using Xunit.Extensions;
@@ -272,5 +273,63 @@ namespace CapnProto.Schema
       // - construct a .capnp file that contains the entire syntax
       // - circular imports
       // - circular references due to imports etc. etc. etc.
+
+
+      [Fact]
+      public void Can_handle_entire_capnp_syntax()
+      {
+         var source = File.ReadAllText("..\\..\\Parser\\FullSyntax.capnp");
+         var p = new CapnpParser(source);
+         var m = p.Parse();
+         m = p.ProcessParsedSource(m, null);
+      }
+
+      [Theory]
+      [InlineData(@"
+         # No id. 
+      ")]
+      [InlineData(@"
+         @123;
+         struct Singles {
+            text @0: Text = 'foobar';
+         }
+      ")]
+      [InlineData("@123; struct Hex { hex @0: Int32 = 0X123; }")]
+      public void Detect_bad_syntax(String source)
+      {
+         var p = new CapnpParser(source);
+
+         try
+         {
+            p.ProcessParsedSource(p.Parse(), null);
+         }
+         catch
+         {
+            // todo: filter on exception later
+            // OK
+         }
+      }
+
+      [Fact]
+      public void Can_parse_ints()
+      {
+         Int32 i;
+         Assert.True(NumberParser<Int32>.TryParse("3", NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out i));
+         Assert.Equal(3, i);
+
+         Assert.Equal(UInt32.MaxValue, NumberParser<UInt32>.Max);
+
+         Assert.True(NumberParser<Int32>.TryParseOctal("123", out i));
+         Assert.Equal(Convert.ToInt32("123", 8), i);
+
+         Assert.True(NumberParser<Int32>.TryParseOctal("17777777777", out i));
+         Assert.Equal(Int32.MaxValue, i);
+
+         Assert.False(NumberParser<Int32>.TryParseOctal("17777777778", out i));
+
+         Double d;
+         Assert.True(NumberParser<Double>.TryParse("-3.1415", NumberStyles.Float, NumberFormatInfo.InvariantInfo, out d));
+         Assert.Equal(-3.1415, d);
+      }
    }
 }

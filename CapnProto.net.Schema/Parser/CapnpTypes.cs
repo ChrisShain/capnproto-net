@@ -132,7 +132,22 @@ namespace CapnProto.Schema.Parser
          _parameter = parameter;
       }
 
-      // probably move
+      public static readonly CapnpType Unit = new CapnpType();
+
+      public virtual Boolean IsNumeric { get { return false; } }
+
+      internal protected virtual CapnpType Accept(CapnpVisitor visitor)
+      {
+         throw new NotImplementedException();
+      }
+   }
+
+   class CapnpPrimitive : CapnpType
+   {
+      public readonly PrimitiveName Kind;
+
+      private CapnpPrimitive(PrimitiveName kind) { Kind = kind; }
+
       public static readonly CapnpPrimitive AnyPointer = new CapnpPrimitive(PrimitiveName.AnyPointer);
       public static readonly CapnpPrimitive Void = new CapnpPrimitive(PrimitiveName.Void);
       public static readonly CapnpPrimitive Bool = new CapnpPrimitive(PrimitiveName.Bool);
@@ -148,22 +163,6 @@ namespace CapnProto.Schema.Parser
       public static readonly CapnpPrimitive Float64 = new CapnpPrimitive(PrimitiveName.Float64);
       public static readonly CapnpPrimitive Text = new CapnpPrimitive(PrimitiveName.Text);
       public static readonly CapnpPrimitive Data = new CapnpPrimitive(PrimitiveName.Data);
-
-      public static readonly CapnpType Unit = new CapnpType();
-
-      public virtual Boolean IsNumeric { get { return false; } }
-
-      internal protected virtual CapnpType Accept(CapnpVisitor visitor)
-      {
-         throw new NotImplementedException();
-      }
-   }
-
-   class CapnpPrimitive : CapnpType
-   {
-      public readonly PrimitiveName Kind;
-
-      public CapnpPrimitive(PrimitiveName kind) { Kind = kind; }
 
       protected internal override CapnpType Accept(CapnpVisitor visitor)
       {
@@ -241,7 +240,7 @@ namespace CapnProto.Schema.Parser
    class CapnpUsing : CapnpNamedType
    {
       // note: can have null name
-      
+
       public CapnpType Target;
 
       protected internal override CapnpType Accept(CapnpVisitor visitor)

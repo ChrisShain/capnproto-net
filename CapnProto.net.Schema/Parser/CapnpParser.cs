@@ -2,18 +2,15 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 
 // Todo:
-// - definitions of whitespace, identifiers (e.g. \w is probably not good)
 // - annotations with struct arguments
-// - more primitive types (floats)
-// - second pass:
-//   * parse imports
-//   * resolve references
-//   * parse unresolved default values
 // - test, test, test
 // - compare with the c++ impl intsead of just the examples
 // - validate ordinals, they cannot contain holes (e.g. number @3 after @1)
+// - enforce UTF8 + BOM
+// - add position information to each "type"
 
 namespace CapnProto.Schema.Parser
 {
@@ -31,7 +28,7 @@ namespace CapnProto.Schema.Parser
       private Int64 _ParseId()
       {
          _Advance("@", skipWhiteSpace: false);
-         return _ParseInt64();
+         return _ParseInteger<Int64>();
       }
       private Int64? _OptParseId()
       {
@@ -91,9 +88,12 @@ namespace CapnProto.Schema.Parser
          if (pos < _source.Length - 1)
             _Error("Expected end of input.");
 
+         if (id == null)
+            _Error("Missing id in module");
+
          return new CapnpModule
          {
-            Id = id.Value, // todo: error
+            Id = id.Value,
             Constants = consts.ToArray(),
             Structs = structs.ToArray(),
             Interfaces = interfaces.ToArray(),
@@ -187,7 +187,7 @@ namespace CapnProto.Schema.Parser
       {
          if (!_OptAdvance("$")) return null;
 
-         var name = _ParseName();
+         var name = _ParseFullName();
          var decl = new CapnpReference { FullName = name };
 
          Value argument = null;
@@ -246,7 +246,7 @@ namespace CapnProto.Schema.Parser
             return result;
          }
 
-         var name = _ParseName();
+         var name = _ParseFullName();
 
          if (!_OptAdvance("="))
          {
@@ -337,7 +337,11 @@ namespace CapnProto.Schema.Parser
 
       private String _ParseName()
       {
-         return _AdvanceExpr(@"(\w|\.)+"); // todo
+         return _AdvanceExpr("[_a-zA-Z][_a-zA-Z0-9]*", "valid identifier");
+      }
+      private String _ParseFullName()
+      {
+         return _AdvanceExpr("[._a-zA-Z][._a-zA-Z0-9]*", "valid identifier");
       }
 
       private IEnumerable<Object> _ParseBlock(Boolean isInterface)
@@ -400,7 +404,7 @@ namespace CapnProto.Schema.Parser
          Annotation annotation = null;
          if (_OptAdvance("@", skipWhiteSpace: false))
          {
-            number = _ParseInt32();
+            number = _ParseInteger<Int32>();
 
             _Advance(":");
             type = _ParseType();
@@ -435,7 +439,7 @@ namespace CapnProto.Schema.Parser
          var name = _ParseName();
 
          _Advance("@", skipWhiteSpace: false);
-         var number = _ParseInt32();
+         var number = _ParseInteger<Int32>();
 
          _Advance("(");
 
@@ -496,26 +500,26 @@ namespace CapnProto.Schema.Parser
 
       private CapnpType _ParseType()
       {
-         var text = _AdvanceExpr(@"\w(\w|\.)*\w");
+         var text = _ParseFullName();
 
          switch (text)
          {
             // Builtin types.
-            case "Int8": return CapnpType.Int8;
-            case "Int16": return CapnpType.Int16;
-            case "Int32": return CapnpType.Int32;
-            case "Int64": return CapnpType.Int64;
-            case "UInt8": return CapnpType.UInt8;
-            case "UInt16": return CapnpType.UInt16;
-            case "UInt32": return CapnpType.UInt32;
-            case "UInt64": return CapnpType.UInt64;
-            case "Float32": return CapnpType.Float32;
-            case "Float64": return CapnpType.Float64;
-            case "Text": return CapnpType.Text;
-            case "Data": return CapnpType.Data;
-            case "Void": return CapnpType.Void;
-            case "Bool": return CapnpType.Bool;
-            case "AnyPointer": return CapnpType.AnyPointer;
+            case "Int8": return CapnpPrimitive.Int8;
+            case "Int16": return CapnpPrimitive.Int16;
+            case "Int32": return CapnpPrimitive.Int32;
+            case "Int64": return CapnpPrimitive.Int64;
+            case "UInt8": return CapnpPrimitive.UInt8;
+            case "UInt16": return CapnpPrimitive.UInt16;
+            case "UInt32": return CapnpPrimitive.UInt32;
+            case "UInt64": return CapnpPrimitive.UInt64;
+            case "Float32": return CapnpPrimitive.Float32;
+            case "Float64": return CapnpPrimitive.Float64;
+            case "Text": return CapnpPrimitive.Text;
+            case "Data": return CapnpPrimitive.Data;
+            case "Void": return CapnpPrimitive.Void;
+            case "Bool": return CapnpPrimitive.Bool;
+            case "AnyPointer": return CapnpPrimitive.AnyPointer;
 
             case "union": return _ParseGroupOrUnion("union");
             case "group": return _ParseGroupOrUnion("group");
@@ -571,13 +575,89 @@ namespace CapnProto.Schema.Parser
          _Advance(close);
       }
 
+      private String _Unescape(Char c)
+      {
+         switch (c)
+         {
+            case 'a': return "\a";
+            case 'b': return "\b";
+            case 'f': return "\f";
+            case 'n': return "\n";
+            case 'r': return "\r";
+            case 't': return "\t";
+            case 'v': return "\v";
+            case 'x':
+               {
+                  var hex = _AdvanceExpr(_kHexRange.Times(2), "hex escape sequence");
+                  return ((Char)Int32.Parse(hex, NumberStyles.HexNumber)).ToString();
+               }
+            default:
+               if (c >= '0' && c <= '7')
+               {
+                  // octal escape sequence
+                  var first = (Int32)c;
+                  String d;
+                  if (_OptAdvanceExpr(_kOctalRange, out d))
+                  {
+                     first = (first << 3) | Int32.Parse(d, NumberStyles.Integer, NumberFormatInfo.InvariantInfo);
+                     if (_OptAdvanceExpr(_kOctalRange, out d))
+                        first = (first << 3) | Int32.Parse(d, NumberStyles.Integer, NumberFormatInfo.InvariantInfo);
+                  }
+                  return ((Char)first).ToString();
+               }
+
+               return c.ToString();
+         }
+      }
+
       private String _ParseText()
       {
+         var delimiter = _AdvanceOneOf("\""); // it appears not supported, capnp throws error "'");
+         var delimiterChar = delimiter[0];
+
+         Char c;
+         StringBuilder buffer = new StringBuilder();
+         for (; ; )
+         {
+            c = _AdvanceChar();
+            switch (c)
+            {
+               case '\n': _Error("Text may not contain linefeeds"); break;
+
+               case '"':
+               case '\'':
+                  if (c != delimiterChar) goto default;
+                  return buffer.Length == 0 ? "" : buffer.ToString();
+
+               case '\\':
+                  pos += 1;
+                  buffer.Append(_Unescape(_AdvanceChar()));
+                  continue;
+
+               default:
+                  buffer.Append(c);
+                  continue;
+            }
+         }
+      }
+
+      private Byte[] _ParseBlob()
+      {
+         _Advance("0x\"");
+
+         String hex;
+         List<Byte> blob = new List<Byte>();
+         while (_OptAdvanceExpr(_kHexRange.Times(2), out hex))
+         {
+            Byte b;
+            if (!Byte.TryParse(hex, NumberStyles.HexNumber, NumberFormatInfo.InvariantInfo, out b))
+               _Error("Expected valid hex sequence");
+            blob.Add(b);
+         }
+
          _Advance("\"");
-         // todo string escaping
-         var str = _AdvanceUntil('"');
-         _Advance("\"");
-         return str;
+
+         return blob.ToArray();
       }
 
       private String _ParseRawValue()
@@ -585,10 +665,10 @@ namespace CapnProto.Schema.Parser
          var start = pos;
          if (_Peek("[")) _AdvanceCommaSep("[", "]", _ParseRawValue).LastOrDefault();
          else if (_Peek("(")) _AdvanceCommaSep<String>("(", ")", () => { _ParseName(); _Advance("="); _ParseRawValue(); return null; }).LastOrDefault();
-         else if (_Peek("\"")) _ParseText();
+         else if (_Peek("\"") || _Peek("'")) _ParseText();
          else
          {
-            _AdvanceExpr(@"(\w|\d|\.|e|E|x|X|[a-f]|[A-F])+"); // skip numbers of any shape, todo
+            _AdvanceExpr(@"(\w|\d|_|\.|e|x|[a-f]|[A-F]|"")+", "invalid default value");
          }
 
          return _source.Substring(start, pos - start);
@@ -604,9 +684,9 @@ namespace CapnProto.Schema.Parser
       {
          if (type is CapnpPrimitive)
          {
-            if (type == CapnpType.Bool)
+            if (type == CapnpPrimitive.Bool)
             {
-               var token = _ParseName();
+               var token = _ParseFullName();
 
                if (token == "true") return new BoolValue { Value = true };
                else if (token == "false") return new BoolValue { Value = false };
@@ -619,57 +699,75 @@ namespace CapnProto.Schema.Parser
 
             if (type.IsNumeric)
             {
-               // todo: can we have doubles .2 (i.e. no 0?)
+               // NOTE: capnp disallows numbers starting with . (e.g. .2)
                if (_PeekExpr("\\d|-"))
                {
-                  if (type == CapnpType.Int8)
-                     return new Int8Value { Value = (SByte)_ParseInt32() }; // todo: pass size to parseIntxx method
-                  else if (type == CapnpType.Int16)
-                     throw new Exception("todo: int16");
-                  else if (type == CapnpType.Int32)
-                     return new Int32Value { Value = _ParseInt32() };
-                  else if (type == CapnpType.Int64)
-                     return new Int64Value { Value = _ParseInt64() };
-                  else if (type == CapnpType.UInt8)
-                     return new UInt8Value { Value = (Byte)_ParseInt32() }; // tood
-                  else if (type == CapnpType.UInt16)
-                     return new UInt16Value { Value = (UInt16)_ParseInt32() }; // todo: ensure this fits
-                  else if (type == CapnpType.UInt32)
-                     return new UInt32Value { Value = (UInt32)_ParseInt32() };
-                  else if (type == CapnpType.UInt64)
-                     return new UInt64Value { Value = (UInt64)_ParseInt64() };
-                  else if (type == CapnpType.Float32)
+                  if (type == CapnpPrimitive.Int8)
+                     return new Int8Value { Value = _ParseInteger<SByte>() };
+                  else if (type == CapnpPrimitive.Int16)
+                     return new Int16Value { Value = _ParseInteger<Int16>() };
+                  else if (type == CapnpPrimitive.Int32)
+                     return new Int32Value { Value = _ParseInteger<Int32>() };
+                  else if (type == CapnpPrimitive.Int64)
+                     return new Int64Value { Value = _ParseInteger<Int64>() };
+                  else if (type == CapnpPrimitive.UInt8)
+                     return new UInt8Value { Value = (Byte)_ParseInteger<Byte>() }; // tood
+                  else if (type == CapnpPrimitive.UInt16)
+                     return new UInt16Value { Value = (UInt16)_ParseInteger<UInt16>() }; // todo: ensure this fits
+                  else if (type == CapnpPrimitive.UInt32)
+                     return new UInt32Value { Value = (UInt32)_ParseInteger<UInt32>() };
+                  else if (type == CapnpPrimitive.UInt64)
+                     return new UInt64Value { Value = (UInt64)_ParseInteger<UInt64>() };
+                  else if (type == CapnpPrimitive.Float32)
                      return new Float32Value { Value = _ParseFloat32() };
-                  else if (type == CapnpType.Float64)
-                     return new Float64Value { Value = _ParseFloat32() }; // < todo
+                  else if (type == CapnpPrimitive.Float64)
+                     return new Float64Value { Value = _ParseFloat64() };
 
                   throw new Exception("numeric type not yet finished: " + type);
                }
                else
+               {
+                  var name = _ParseFullName();
+
+                  if (name == "inf")
+                  {
+                     if (type == CapnpPrimitive.Float32)
+                        return new Float32Value { Value = Single.PositiveInfinity };
+                     else if (type == CapnpPrimitive.Float64)
+                        return new Float64Value { Value = Double.PositiveInfinity };
+                     _Error("Uexpected token 'inf'");
+                  }
+
                   return new ConstRefValue(type)
                   {
-                     FullConstName = _ParseName()
+                     FullConstName = name
                   };
+               }
+
             }
 
-            if (type == CapnpType.Void)
+            if (type == CapnpPrimitive.Void)
             {
-               var token = _ParseName();
+               var token = _ParseFullName();
                if (token == "void") return new VoidValue();
                return new ConstRefValue(type) { FullConstName = token };
             }
 
-            if (type == CapnpType.Text)
+            if (type == CapnpPrimitive.Text)
             {
-               if (_Peek("\""))
+               if (_Peek("\"") || _Peek("'"))
                   return new TextValue { Value = _ParseText() };
-               return new ConstRefValue(type) { FullConstName = _ParseName() };
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
             }
 
-            if (type == CapnpType.Data)
-               throw new Exception("todo: what does a data value look like?");
+            if (type == CapnpPrimitive.Data)
+            {
+               if (_Peek("0x\""))
+                  return new DataValue { Blob = _ParseBlob() };
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
+            }
 
-            if (type == CapnpType.AnyPointer)
+            if (type == CapnpPrimitive.AnyPointer)
                throw new Exception("todo: can a void* have a default value?");
 
             throw new Exception("todo");
@@ -677,7 +775,7 @@ namespace CapnProto.Schema.Parser
          else if (type is CapnpList)
          {
             if (!_OptAdvance("["))
-               return new ConstRefValue(type) { FullConstName = _ParseName() };
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
 
             var listType = (CapnpList)type;
             var values = new List<Value>();
@@ -694,7 +792,7 @@ namespace CapnProto.Schema.Parser
          else if (type is CapnpStruct)
          {
             if (!_OptAdvance("("))
-               return new ConstRefValue(type) { FullConstName = _ParseName() };
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
 
             var defs = new Dictionary<String, Value>();
             while (_source[pos] != ')')
@@ -732,57 +830,75 @@ namespace CapnProto.Schema.Parser
          throw new Exception("todo: def value for " + type.GetType().FullName);
       }
 
-      private Int32 _ParseInt32()
-      {
-         var isHex = false;
-         var text = "";
+      private delegate Boolean TryParse<T>(String s, NumberStyles style, NumberFormatInfo i, out T result);
 
-         // is a number "0123" valid?
-         if (_OptAdvance("0x", skipWhiteSpace: false) || _OptAdvance("0X", skipWhiteSpace: false))
+      private T _ParseInteger<T>() where T : struct
+      {
+         T result;
+         var isHex = false;
+
+         var text = "";
+         if (_OptAdvance("-"))
+            text = "-";
+         else if (_OptAdvance("0x", skipWhiteSpace: false)) // note: 0X explicitely not supported
          {
             isHex = true;
-            text = _AdvanceExpr("([a-f]|[A-F]|[0-9])+");
+            text = _AdvanceExpr(_kHexRange.OneOrMore());
          }
-         else
-            text = _AdvanceExpr("[0-9]+");
-
-         Int32 asInt = 0;
-         if (isHex && !Int32.TryParse(text, NumberStyles.HexNumber, NumberFormatInfo.InvariantInfo, out asInt))
-            _Error("valid hex number, got '{0}'", text);
-         if (!isHex && !Int32.TryParse(text, NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out asInt))
-            _Error("valid integer, got '{0}'", text);
-
-         return asInt;
-      }
-
-      private Int64 _ParseInt64()
-      {
-         var isHex = false;
-         var text = "";
-
-         // is a number "0123" valid?
-         if (_OptAdvance("0x", skipWhiteSpace: false) || _OptAdvance("0X", skipWhiteSpace: false))
+         else if (_OptAdvance("0", skipWhiteSpace: false)) // octal
          {
-            isHex = true;
-            text = _AdvanceExpr("([a-f]|[A-F]|[0-9])+");
+            var octal = _AdvanceExpr(_kOctalRange.ZeroOrMore(), "octal number");
+            if (octal.Length == 0)
+               return default(T);
+            else if (!NumberParser<T>.TryParseOctal(octal, out result))
+               _Error("Invalid octal number");
+            return result;
          }
-         else
-            text = _AdvanceExpr("[0-9]+");
 
-         Int64 asInt = 0;
-         if (isHex && !Int64.TryParse(text, NumberStyles.HexNumber, NumberFormatInfo.InvariantInfo, out asInt))
-            _Error("valid hex number, got '{0}'", text);
-         if (!isHex && !Int64.TryParse(text, NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out asInt))
-            _Error("valid integer, got '{0}'", text);
+         if (!isHex)
+            text += _AdvanceExpr("[0-9]+");
 
-         return asInt;
+         var formatInfo = NumberFormatInfo.InvariantInfo;
+         var style = isHex ? NumberStyles.HexNumber : NumberStyles.Integer;
+
+         if (!NumberParser<T>.TryParse(text, style, formatInfo, out result)) _Error("Valid integer");
+         return result;
       }
 
+      // todo: verify there are no problems due to binary float format used
       private Single _ParseFloat32()
       {
-         // todo: this is obv. wrong
-         _AdvanceExpr(@"\d|\.|e|E");
-         return -7.42f;
+         // Capnp appears to disallow E.
+         var negate = _OptAdvance("-");
+
+         Single result;
+         if (_OptAdvance("inf"))
+            result = Single.PositiveInfinity;
+         else
+         {
+            const String errorMsg = "valid float32 literal";
+            var token = _AdvanceExpr(@"(\d|\.|e)+", errorMsg);
+            if (!Single.TryParse(token, NumberStyles.Float, NumberFormatInfo.InvariantInfo, out result)) _Error(errorMsg);
+         }
+
+         return negate ? -result : result;
+      }
+      private Double _ParseFloat64()
+      {
+         // Capnp appears to disallow E.
+         var negate = _OptAdvance("-");
+
+         Double result;
+         if (_OptAdvance("inf"))
+            result = Double.PositiveInfinity;
+         else
+         {
+            const String errorMsg = "valid float64 literal";
+            var token = _AdvanceExpr(@"(\d|\.|e)+", errorMsg);
+            if (!Double.TryParse(token, NumberStyles.Float, NumberFormatInfo.InvariantInfo, out result)) _Error(errorMsg);
+         }
+
+         return negate ? -result : result;
       }
 
       private CapnpEnum _ParseEnum()
@@ -800,7 +916,7 @@ namespace CapnProto.Schema.Parser
          {
             var fldName = _ParseName();
             _Advance("@", skipWhiteSpace: false);
-            var number = _ParseInt32();
+            var number = _ParseInteger<Int32>();
             var enumerantAnnot = _OptParseAnnotation();
             _Advance(";");
 

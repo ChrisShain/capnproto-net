@@ -46,7 +46,7 @@ namespace CapnProto.Schema.Parser
 
    class VoidValue : Value
    {
-      public VoidValue() : base(CapnpType.Void) { }
+      public VoidValue() : base(CapnpPrimitive.Void) { }
 
       public override string ToString()
       {
@@ -56,7 +56,7 @@ namespace CapnProto.Schema.Parser
 
    class TextValue : Value
    {
-      public TextValue() : base(CapnpType.Text) { }
+      public TextValue() : base(CapnpPrimitive.Text) { }
       public String Value;
 
       public override string ToString()
@@ -68,7 +68,7 @@ namespace CapnProto.Schema.Parser
    // todo: what does a data value look like?
    class DataValue : Value
    {
-      public DataValue() : base(CapnpType.Data) { }
+      public DataValue() : base(CapnpPrimitive.Data) { }
       public Byte[] Blob;
 
       public override string ToString()
@@ -79,7 +79,7 @@ namespace CapnProto.Schema.Parser
 
    class BoolValue : Value
    {
-      public BoolValue() : base(CapnpType.Bool) { }
+      public BoolValue() : base(CapnpPrimitive.Bool) { }
       public Boolean Value;
 
       public override string ToString()
@@ -91,7 +91,7 @@ namespace CapnProto.Schema.Parser
    class Int8Value : Value
    {
       public Int8Value()
-         : base(CapnpType.Int8)
+         : base(CapnpPrimitive.Int8)
       {
       }
 
@@ -103,9 +103,19 @@ namespace CapnProto.Schema.Parser
       }
    }
 
+   class Int16Value : Value
+   {
+      public Int16Value() : base(CapnpPrimitive.Int16) { }
+      public Int16 Value;
+      public override string ToString()
+      {
+         return base.ToString();
+      }
+   }
+
    class Int32Value : Value
    {
-      public Int32Value() : base(CapnpType.Int32) { }
+      public Int32Value() : base(CapnpPrimitive.Int32) { }
       public Int32 Value;
 
       public override string ToString()
@@ -116,7 +126,7 @@ namespace CapnProto.Schema.Parser
 
    class Int64Value : Value
    {
-      public Int64Value() : base(CapnpType.Int64) { }
+      public Int64Value() : base(CapnpPrimitive.Int64) { }
       public Int64 Value;
 
       public override string ToString()
@@ -127,7 +137,7 @@ namespace CapnProto.Schema.Parser
 
    class UInt8Value : Value
    {
-      public UInt8Value() : base(CapnpType.UInt8) { }
+      public UInt8Value() : base(CapnpPrimitive.UInt8) { }
       public Byte Value;
 
       public override string ToString()
@@ -138,7 +148,7 @@ namespace CapnProto.Schema.Parser
 
    class UInt64Value : Value
    {
-      public UInt64Value() : base(CapnpType.UInt64) { }
+      public UInt64Value() : base(CapnpPrimitive.UInt64) { }
       public UInt64 Value;
 
       public override string ToString()
@@ -149,7 +159,7 @@ namespace CapnProto.Schema.Parser
 
    class UInt32Value : Value
    {
-      public UInt32Value() : base(CapnpType.UInt32) { }
+      public UInt32Value() : base(CapnpPrimitive.UInt32) { }
       public UInt32 Value;
 
       public override string ToString()
@@ -160,7 +170,7 @@ namespace CapnProto.Schema.Parser
 
    class UInt16Value : Value
    {
-      public UInt16Value() : base(CapnpType.UInt16) { }
+      public UInt16Value() : base(CapnpPrimitive.UInt16) { }
       public UInt16 Value;
 
       public override string ToString()
@@ -171,7 +181,7 @@ namespace CapnProto.Schema.Parser
 
    class Float32Value : Value
    {
-      public Float32Value() : base(CapnpType.Float32) { }
+      public Float32Value() : base(CapnpPrimitive.Float32) { }
       public Single Value;
 
       public override string ToString()
@@ -182,8 +192,8 @@ namespace CapnProto.Schema.Parser
 
    class Float64Value : Value
    {
-      public Float64Value() : base(CapnpType.Float64) { }
-      public Single Value;
+      public Float64Value() : base(CapnpPrimitive.Float64) { }
+      public Double Value;
 
       public override string ToString()
       {

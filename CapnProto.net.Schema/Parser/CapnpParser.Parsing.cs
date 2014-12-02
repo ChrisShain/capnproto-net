@@ -8,6 +8,17 @@ namespace CapnProto.Schema.Parser
    // Adds services for parsing to the parser.
    partial class CapnpParser
    {
+      private static readonly String _kHexRange = "[0-9a-fA-F]";
+      private static readonly String _kOctalRange = "[0-7]";
+
+      //private static class _StringExtensions
+      //{
+      //   public String Times(this String str, Int32 x)
+      //   {
+      //      return str + "{" + x.ToString(NumberFormatInfo.InvariantInfo) + "}";
+      //   }
+      //}
+
       private Exception _Error(String error, params Object[] args)
       {
          Int32 column = pos;
@@ -76,10 +87,25 @@ namespace CapnProto.Schema.Parser
          }
       }
 
+      private Char _ParseHexDigit(Char c)
+      {
+         if (c < 'A') return (Char)(c - '0');
+         if (c < 'a') return (Char)(c - 'A' + 10);
+         return (Char)(c - 'a' + 10);
+      }
+
+      private static readonly Int64 _sWhitespace = (1L << '\f') | (1L << '\r') | (1L << '\n') | (1L << '\t') | (1L << '\v') | (1L << ' ');
+
       private static Boolean _IsWhiteSpace(Char c)
       {
-         // todo
-         return Char.IsWhiteSpace(c);
+         return c <= 0x3F && (_sWhitespace & (1L << c)) != 0;
+      }
+
+      private Char _AdvanceChar()
+      {
+         if (pos > _source.Length - 1)
+            _Error("Unexpected end of input.");
+         return _source[pos++];
       }
 
       private void _AdvanceWhiteSpace()
@@ -145,7 +171,7 @@ namespace CapnProto.Schema.Parser
          return false;
       }
 
-      private String _AdvanceUntil(char match)
+      private String _AdvanceUntil(Char match)
       {
          for (var start = pos; pos < _source.Length; pos++)
             if (_source[pos] == match)
@@ -155,11 +181,17 @@ namespace CapnProto.Schema.Parser
       }
 
       // todo: better error, pass on error message?
-      private String _AdvanceExpr(String regex)
+      private String _AdvanceExpr(String regex, String expectedToken = null)
       {
          String result = null;
          if (!_OptAdvanceExpr(regex, out result))
-            _Error("Expected regex match: " + regex);
+         {
+            if (expectedToken == null)
+               _Error("Expected regex match: " + regex);
+            else
+               _Error("Expected " + expectedToken);
+         }
+
          return result;
       }
 
