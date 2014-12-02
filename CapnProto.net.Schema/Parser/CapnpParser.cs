@@ -191,11 +191,9 @@ namespace CapnProto.Schema.Parser
          var decl = new CapnpReference { FullName = name };
 
          Value argument = null;
-         if (_OptAdvance("(") && !_OptAdvance(")"))
+         if (_Peek("("))
          {
-            // todo: can this have multiple arguments?
             argument = _ParseDefaultValue(null);
-            _Advance(")");
          }
 
          return new Annotation
@@ -627,6 +625,7 @@ namespace CapnProto.Schema.Parser
                case '"':
                case '\'':
                   if (c != delimiterChar) goto default;
+                  _AdvanceWhiteSpace();
                   return buffer.Length == 0 ? "" : buffer.ToString();
 
                case '\\':
@@ -660,27 +659,62 @@ namespace CapnProto.Schema.Parser
          return blob.ToArray();
       }
 
-      private String _ParseRawValue()
-      {
-         var start = pos;
-         if (_Peek("[")) _AdvanceCommaSep("[", "]", _ParseRawValue).LastOrDefault();
-         else if (_Peek("(")) _AdvanceCommaSep<String>("(", ")", () => { _ParseName(); _Advance("="); _ParseRawValue(); return null; }).LastOrDefault();
-         else if (_Peek("\"") || _Peek("'")) _ParseText();
-         else
-         {
-            _AdvanceExpr(@"(\w|\d|_|\.|e|x|[a-f]|[A-F]|"")+", "invalid default value");
-         }
-
-         return _source.Substring(start, pos - start);
-      }
-
       public static Value ParseValue(String rawValue, CapnpType type)
       {
          var parser = new CapnpParser(rawValue);
          return parser._ParseDefaultValue(type);
       }
 
+      private String _ParseRawValue()
+      {
+         var start = pos;
+         if (_Peek("[")) _AdvanceCommaSep("[", "]", () => _ParseDefaultValue(null)).LastOrDefault();
+         else if (_Peek("\"")) _ParseText();
+         else if (_PeekExpr("\\d|-"))
+         {
+            var negate = _OptAdvance("-");
+            if (_OptAdvance("inf")) return negate ? "-inf" : "inf";
+            _AdvanceExpr(@"\d(\.|e|x|[a-fA-F]|\d)+", "invalid number");
+         }
+         else
+         {
+            var name = _ParseFullName();
+            if (name.Contains("."))
+               return name; // const ref
+
+            if (name == "true" || name == "false" || name == "inf")
+               return name;
+
+            _Advance("=");
+            _ParseDefaultValue(null);
+
+            // Skip struct definition.
+            while (_OptAdvance(","))
+            {
+               _ParseName();
+               _Advance("=");
+               _ParseDefaultValue(null);
+            }
+         }
+
+         return _source.Substring(start, pos - start);
+      }
+
       private Value _ParseDefaultValue(CapnpType type)
+      {
+         // Strip opening parentheses.
+         var parenthesesCount = 0;
+         while (_OptAdvance("(")) parenthesesCount += 1;
+
+         var result = _ParseDefaultValueDirect(type);
+
+         for (; parenthesesCount > 0; parenthesesCount--)
+            _Advance(")");
+
+         return result;
+      }
+
+      private Value _ParseDefaultValueDirect(CapnpType type)
       {
          if (type is CapnpPrimitive)
          {
@@ -711,13 +745,13 @@ namespace CapnProto.Schema.Parser
                   else if (type == CapnpPrimitive.Int64)
                      return new Int64Value { Value = _ParseInteger<Int64>() };
                   else if (type == CapnpPrimitive.UInt8)
-                     return new UInt8Value { Value = (Byte)_ParseInteger<Byte>() }; // tood
+                     return new UInt8Value { Value = _ParseInteger<Byte>() }; // todo
                   else if (type == CapnpPrimitive.UInt16)
-                     return new UInt16Value { Value = (UInt16)_ParseInteger<UInt16>() }; // todo: ensure this fits
+                     return new UInt16Value { Value = _ParseInteger<UInt16>() }; // todo: ensure this fits
                   else if (type == CapnpPrimitive.UInt32)
-                     return new UInt32Value { Value = (UInt32)_ParseInteger<UInt32>() };
+                     return new UInt32Value { Value = _ParseInteger<UInt32>() };
                   else if (type == CapnpPrimitive.UInt64)
-                     return new UInt64Value { Value = (UInt64)_ParseInteger<UInt64>() };
+                     return new UInt64Value { Value = _ParseInteger<UInt64>() };
                   else if (type == CapnpPrimitive.Float32)
                      return new Float32Value { Value = _ParseFloat32() };
                   else if (type == CapnpPrimitive.Float64)
@@ -738,12 +772,12 @@ namespace CapnProto.Schema.Parser
                      _Error("Uexpected token 'inf'");
                   }
 
+                  if (!name.Contains(".")) _Error("Invalid const reference");
                   return new ConstRefValue(type)
                   {
                      FullConstName = name
                   };
                }
-
             }
 
             if (type == CapnpPrimitive.Void)
@@ -755,7 +789,7 @@ namespace CapnProto.Schema.Parser
 
             if (type == CapnpPrimitive.Text)
             {
-               if (_Peek("\"") || _Peek("'"))
+               if (_Peek("\"")) // || _Peek("'"))
                   return new TextValue { Value = _ParseText() };
                return new ConstRefValue(type) { FullConstName = _ParseFullName() };
             }
@@ -770,7 +804,7 @@ namespace CapnProto.Schema.Parser
             if (type == CapnpPrimitive.AnyPointer)
                throw new Exception("todo: can a void* have a default value?");
 
-            throw new Exception("todo");
+            throw new InvalidOperationException();
          }
          else if (type is CapnpList)
          {
@@ -791,13 +825,24 @@ namespace CapnProto.Schema.Parser
          }
          else if (type is CapnpStruct)
          {
-            if (!_OptAdvance("("))
-               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
+            var canHaveConstRef = true;
 
             var defs = new Dictionary<String, Value>();
-            while (_source[pos] != ')')
+            while (true)
             {
-               var name = _ParseName();
+               var name = canHaveConstRef ? _ParseFullName() : _ParseName();
+
+               // A const ref *always* contains a period.
+               if (name.Contains("."))
+               {
+                  if (canHaveConstRef)
+                     return new ConstRefValue(type) { FullConstName = name };
+                  else
+                     _Error("invalid field name");
+               }
+
+               canHaveConstRef = false;
+
                _Advance("=");
 
                CapnpType fldType;
@@ -808,8 +853,6 @@ namespace CapnProto.Schema.Parser
                defs.Add(name, _ParseDefaultValue(fldType));
                if (!_OptAdvance(",")) break;
             }
-
-            _Advance(")");
 
             return new StructValue((CapnpStruct)type)
             {

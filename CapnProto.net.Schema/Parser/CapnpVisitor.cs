@@ -152,11 +152,13 @@ namespace CapnProto.Schema.Parser
 
       protected internal virtual CapnpConst VisitConst(CapnpConst @const)
       {
+         @const.Value = VisitValue(@const.Value);
          return @const;
       }
 
       protected internal virtual CapnpType VisitImport(CapnpImport import)
       {
+         import.Type = Visit(import.Type);
          return import;
       }
 
@@ -167,6 +169,7 @@ namespace CapnProto.Schema.Parser
 
       protected internal virtual CapnpAnnotation VisitAnnotationDecl(CapnpAnnotation annotation)
       {
+         annotation.ArgumentType = Visit(annotation.ArgumentType);
          return annotation;
       }
    }

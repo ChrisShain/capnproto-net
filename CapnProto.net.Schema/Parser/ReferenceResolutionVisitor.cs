@@ -36,7 +36,9 @@ namespace CapnProto.Schema.Parser
       {
          var result = ResolveName(@ref.FullName);
          if (!(result is CapnpReference))
+         {
             _mUnresolvedReferences.Remove(@ref);
+         }
          return result;
       }
 
