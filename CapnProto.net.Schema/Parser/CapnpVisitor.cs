@@ -77,7 +77,6 @@ namespace CapnProto.Schema.Parser
          return @struct;
       }
 
-      // todo: return type
       protected internal virtual CapnpInterface VisitInterface(CapnpInterface @interface)
       {
          if (!mEnableNestedType) return @interface;

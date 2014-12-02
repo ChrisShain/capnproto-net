@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -99,6 +100,17 @@ namespace CapnProto.Schema.Parser
       private static Boolean _IsWhiteSpace(Char c)
       {
          return c <= 0x3F && (_sWhitespace & (1L << c)) != 0;
+      }
+
+      private IEnumerable<T> _AdvanceCommaSep<T>(String open, String close, Func<T> parseItem)
+      {
+         _Advance(open);
+         while (!_Peek(close))
+         {
+            yield return parseItem();
+            if (!_OptAdvance(",")) break;
+         }
+         _Advance(close);
       }
 
       private Char _AdvanceChar()

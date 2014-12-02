@@ -155,7 +155,7 @@ namespace CapnProto.Schema.Parser
             String target;
             while (_OptAdvanceOneOf(out target, "file", "struct", "field", "union", "enumerant", "enum", "method", "param", "annotation", "const", "interface", "group"))
             {
-               targets.Add((AnnotationTypes)Enum.Parse(typeof(AnnotationTypes), target)); // todo error
+               targets.Add((AnnotationTypes)Enum.Parse(typeof(AnnotationTypes), target));
                if (!_OptAdvance(",")) break;
             }
          }
@@ -376,7 +376,7 @@ namespace CapnProto.Schema.Parser
                   yield return new Field
                   {
                      Name = null, // unnamed union
-                     Type = _ParseGroupOrUnion("union")
+                     Type = _ParseGroupOrUnion(isUnion: true)
                   }; break;
 
                default:
@@ -418,7 +418,7 @@ namespace CapnProto.Schema.Parser
          else
          {
             _Advance(":");
-            type = _ParseGroupOrUnion(_AdvanceOneOf("union", "group"));
+            type = _ParseGroupOrUnion(_AdvanceOneOf("union", "group") == "union");
          }
 
          return new Field
@@ -438,17 +438,7 @@ namespace CapnProto.Schema.Parser
          _Advance("@", skipWhiteSpace: false);
          var number = _ParseInteger<Int32>();
 
-         _Advance("(");
-
-         var arguments = new List<Parameter>();
-
-         while (!_Peek(")"))
-         {
-            arguments.Add(_ParseParameter());
-            if (!_OptAdvance(",")) break;
-         }
-
-         _Advance(")");
+         var arguments = _AdvanceCommaSep<Parameter>("(", ")", _ParseParameter).ToArray();
 
          Parameter returnType = null;
          if (_OptAdvance("->"))
@@ -469,7 +459,7 @@ namespace CapnProto.Schema.Parser
          {
             Name = name,
             Number = number,
-            Arguments = arguments.ToArray(),
+            Arguments = arguments,
             Annotation = annotation,
             ReturnType = returnType
          };
@@ -518,8 +508,8 @@ namespace CapnProto.Schema.Parser
             case "Bool": return CapnpPrimitive.Bool;
             case "AnyPointer": return CapnpPrimitive.AnyPointer;
 
-            case "union": return _ParseGroupOrUnion("union");
-            case "group": return _ParseGroupOrUnion("group");
+            case "union": return _ParseGroupOrUnion(true);
+            case "group": return _ParseGroupOrUnion(false);
 
             case "import": return _ParseImport();
 
@@ -542,7 +532,7 @@ namespace CapnProto.Schema.Parser
          throw new Exception();
       }
 
-      private CapnpType _ParseGroupOrUnion(String kind)
+      private CapnpType _ParseGroupOrUnion(Boolean isUnion)
       {
          _Advance("{");
 
@@ -550,26 +540,10 @@ namespace CapnProto.Schema.Parser
          while (!_OptAdvance("}"))
             flds.Add(_ParseField());
 
-         if (kind == "union")
-         {
+         if (isUnion)
             return new CapnpUnion { Fields = flds.ToArray() };
-         }
          else
-         {
             return new CapnpGroup { Fields = flds.ToArray() };
-         }
-      }
-
-      // todo: use
-      private IEnumerable<T> _AdvanceCommaSep<T>(String open, String close, Func<T> parseItem)
-      {
-         _Advance(open);
-         while (!_Peek(close))
-         {
-            yield return parseItem();
-            if (!_OptAdvance(",")) break;
-         }
-         _Advance(close);
       }
 
       private String _Unescape(Char c)

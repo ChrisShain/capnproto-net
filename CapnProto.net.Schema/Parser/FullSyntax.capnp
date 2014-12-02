@@ -1,6 +1,8 @@
 
 # Todo: to move somewhere else
 
+# Intention: this file contains everything the syntax allows and passes capnp itself.
+
 annotation baz(*) :Foobar;
 annotation voidAn(*): Void;
 
