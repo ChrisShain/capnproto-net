@@ -129,7 +129,7 @@ namespace CapnProto.Schema.Parser
             goto HANDLE_RESULT;
          }
 
-         var @interface = scope as CapnpStruct;
+         var @interface = scope as CapnpInterface;
          if (@interface != null)
          {
             // todo

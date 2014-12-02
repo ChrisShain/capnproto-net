@@ -310,6 +310,7 @@ namespace CapnProto.Schema
          try
          {
             p.ProcessParsedSource(p.Parse(), null);
+            Assert.True(false);
          }
          catch
          {

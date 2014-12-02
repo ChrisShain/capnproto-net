@@ -32,9 +32,31 @@ struct DefaultValueTests $baz((((blah = "baz")))) # < notice that many brackets 
    foobar @9: Foobar = (((((( blah = "foobar" ))))));
 }
 
+annotation pa(param): Void;
+annotation pi(interface): Void;
+
+interface IFoo $pi {
+   # Note how parameters don't have a case rule, strange.
+   foobar @0 (X : Int32 $pa) -> (Y: Text = (("blah")) $pa) $voidAn;
+}
+
+annotation pe(enum): Void;
+annotation pen(enumerant): Void;
+
+enum BlahEnum $pe {
+  foo @0;
+  bar @1 $pen;
+}
+enum WithId @0xa5a69bc6a92158fc {}
+
 struct UseNameBeforeUsing {
    ref @0: TRef;
    using TRef = Foobar;
+}
+
+struct NameUniqueness {
+   #const Foobar : Text = "blah";
+   #struct Foobar {}
 }
 
 @0x9eb32e19f86ee174;

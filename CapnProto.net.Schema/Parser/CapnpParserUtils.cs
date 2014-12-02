@@ -6,6 +6,12 @@ using System.Reflection;
 
 namespace CapnProto.Schema.Parser
 {
+   internal static class Empty<T>
+   {
+      public static readonly T[] Array = new T[0];
+      static Empty() { }
+   }
+
    internal static class RegularExtensions
    {
       public static String Group(this String expr)
@@ -98,7 +104,7 @@ namespace CapnProto.Schema.Parser
       }
 
       // "generic" parse as octal by parsing to the largest "common" denominator.
-      // *could* even do this entirely with an expression tree but the work
+      // *could* even do this entirely with an expression tree but.. the work
       //public static Boolean TryParseOctal(String s, out T result)
       //{
       //   result = default(T);

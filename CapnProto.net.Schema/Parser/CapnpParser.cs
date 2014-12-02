@@ -24,6 +24,8 @@ namespace CapnProto.Schema.Parser
          pos = 0;
       }
 
+      // todo: an id must be >= 1UL << 63
+      // todo: generate ids
       private Int64 _ParseId()
       {
          _Advance("@", skipWhiteSpace: false);
@@ -121,7 +123,7 @@ namespace CapnProto.Schema.Parser
 
       private CapnpConst _ParseConst()
       {
-         var name = _ParseName();
+         var name = _ParseNonCapitalizedName();
          _Advance(":");
          var type = _ParseType();
          _Advance("=");
@@ -141,7 +143,7 @@ namespace CapnProto.Schema.Parser
 
       private CapnpAnnotation _ParseAnnotationDeclaration()
       {
-         var name = _ParseName();
+         var name = _ParseNonCapitalizedName();
 
          var id = _OptParseId();
 
@@ -269,7 +271,7 @@ namespace CapnProto.Schema.Parser
 
       private CapnpStruct _ParseStruct()
       {
-         var name = _ParseName();
+         var name = _ParseCapitalizedName();
 
          var id = _OptParseId();
 
@@ -294,7 +296,7 @@ namespace CapnProto.Schema.Parser
 
       private CapnpInterface _ParseInterface()
       {
-         var name = _ParseName();
+         var name = _ParseCapitalizedName();
 
          var id = _OptParseId();
 
@@ -306,8 +308,9 @@ namespace CapnProto.Schema.Parser
             extendedIfaces = new List<CapnpType>();
             do
             {
-               extendedIfaces.Add(_ParseType()); // todo: abuse of ispar
-            } while (_OptAdvance(","));
+               extendedIfaces.Add(_ParseType());
+            }
+            while (_OptAdvance(","));
 
             _Advance(")");
          }
@@ -326,12 +329,25 @@ namespace CapnProto.Schema.Parser
             Name = name,
             Id = id,
             Annotation = annotation,
-            Methods = block.Where(o => o is Method).Cast<Method>().ToArray(),
-            NestedTypes = block.Where(o => o is CapnpType).Cast<CapnpType>().ToArray(),
-            BaseInterfaces = extendedIfaces == null ? new CapnpType[0] : extendedIfaces.ToArray()
+            Methods = block.OfType<Method>().ToArray(),
+            NestedTypes = block.OfType<CapnpType>().Where(t => !(t is CapnpUsing)).ToArray(),
+            BaseInterfaces = extendedIfaces == null ? Empty<CapnpType>.Array : extendedIfaces.ToArray(),
+            Usings = block.OfType<CapnpUsing>().ToArray()
          };
       }
 
+      private String _ParseCapitalizedName()
+      {
+         var name = _ParseName();
+         if (Char.IsLower(name[0])) _Error("Name must be capitalized"); // todo this could be a non-terminating error
+         return name;
+      }
+      private String _ParseNonCapitalizedName()
+      {
+         var name = _ParseName();
+         if (Char.IsUpper(name[0])) _Error("Name must start with lower cased character.");
+         return name;
+      }
       private String _ParseName()
       {
          return _AdvanceExpr("[_a-zA-Z][_a-zA-Z0-9]*", "valid identifier");
@@ -392,7 +408,7 @@ namespace CapnProto.Schema.Parser
 
       private Field _ParseField()
       {
-         var name = _ParseName();
+         var name = _ParseNonCapitalizedName();
 
          var number = -1;
 
@@ -433,7 +449,7 @@ namespace CapnProto.Schema.Parser
 
       private Method _ParseMethod()
       {
-         var name = _ParseName();
+         var name = _ParseNonCapitalizedName();
 
          _Advance("@", skipWhiteSpace: false);
          var number = _ParseInteger<Int32>();
@@ -467,6 +483,7 @@ namespace CapnProto.Schema.Parser
 
       private Parameter _ParseParameter()
       {
+         // Note: no case rule applies to parameters.
          var name = _ParseName();
 
          _Advance(":");
@@ -919,7 +936,7 @@ namespace CapnProto.Schema.Parser
 
       private CapnpEnum _ParseEnum()
       {
-         var name = _ParseName();
+         var name = _ParseCapitalizedName();
 
          var id = _OptParseId();
 
@@ -930,7 +947,7 @@ namespace CapnProto.Schema.Parser
          var fields = new List<Enumerant>();
          while (!_Peek("}"))
          {
-            var fldName = _ParseName();
+            var fldName = _ParseNonCapitalizedName();
             _Advance("@", skipWhiteSpace: false);
             var number = _ParseInteger<Int32>();
             var enumerantAnnot = _OptParseAnnotation();

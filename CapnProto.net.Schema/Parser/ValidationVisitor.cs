@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace CapnProto.Schema.Parser
 {
@@ -9,6 +10,7 @@ namespace CapnProto.Schema.Parser
    {
       // todo, first collect some rules
       // - numbers should not contain any 'holes'
+      // - correct application of annotations (finish below todo)
 
       // This should never happen with a correct parser.
       protected internal override CapnpType VisitReference(CapnpReference @ref)
@@ -37,6 +39,26 @@ namespace CapnProto.Schema.Parser
          var m = base.VisitModule(module);
          _mVisitingModule = false;
          return m;
+      }
+
+      protected internal override CapnpStruct VisitStruct(CapnpStruct @struct)
+      {
+         _ValidateAnnotation(@struct.Annotation, AnnotationTypes.@struct);
+         return base.VisitStruct(@struct);
+      }
+
+      protected internal override CapnpInterface VisitInterface(CapnpInterface @interface)
+      {
+         _ValidateAnnotation(@interface.Annotation, AnnotationTypes.@interface);
+         return base.VisitInterface(@interface);
+      }
+
+      private static void _ValidateAnnotation(Annotation annotation, AnnotationTypes type)
+      {
+         if (annotation == null) return;
+         var decl = (CapnpAnnotation)annotation.Declaration;
+         if (!decl.Targets.Any(t => t == AnnotationTypes.any || t == type))
+            throw new Exception("invalid annotation, cannot be applied to this declaration");
       }
    }
 }

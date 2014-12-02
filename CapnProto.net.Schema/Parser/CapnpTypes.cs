@@ -25,7 +25,7 @@ namespace CapnProto.Schema.Parser
 
    class Method : Member
    {
-      public Parameter[] Arguments;
+      public Parameter[] Arguments = Empty<Parameter>.Array;
       public Parameter ReturnType;
 
       public override string ToString()
