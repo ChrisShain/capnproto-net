@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 
 // Todo:
-// - annotations with struct arguments
 // - test, test, test
 // - compare with the c++ impl intsead of just the examples
 // - validate ordinals, they cannot contain holes (e.g. number @3 after @1)
@@ -674,7 +673,7 @@ namespace CapnProto.Schema.Parser
          {
             var negate = _OptAdvance("-");
             if (_OptAdvance("inf")) return negate ? "-inf" : "inf";
-            _AdvanceExpr(@"\d(\.|e|x|[a-fA-F]|\d)+", "invalid number");
+            _AdvanceExpr(@"(\d|-)(\.|[exa-fA-F]|\d)*", "valid number");
          }
          else
          {
@@ -789,7 +788,7 @@ namespace CapnProto.Schema.Parser
 
             if (type == CapnpPrimitive.Text)
             {
-               if (_Peek("\"")) // || _Peek("'"))
+               if (_Peek("\""))
                   return new TextValue { Value = _ParseText() };
                return new ConstRefValue(type) { FullConstName = _ParseFullName() };
             }
@@ -954,7 +953,7 @@ namespace CapnProto.Schema.Parser
 
          _Advance("{");
 
-         var fields = new List<CapnpEnum.Enumerant>();
+         var fields = new List<Enumerant>();
          while (!_Peek("}"))
          {
             var fldName = _ParseName();
@@ -963,7 +962,7 @@ namespace CapnProto.Schema.Parser
             var enumerantAnnot = _OptParseAnnotation();
             _Advance(";");
 
-            fields.Add(new CapnpEnum.Enumerant
+            fields.Add(new Enumerant
             {
                Name = fldName,
                Number = number,

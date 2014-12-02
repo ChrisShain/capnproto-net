@@ -2,10 +2,11 @@
 # Todo: to move somewhere else
 
 annotation baz(*) :Foobar;
+annotation voidAn(*): Void;
 
 const constantFoo :Foobar = ( blah = "constant" );
 
-struct Foobar{
+struct Foobar $voidAn {
   blah @0: Text = "foobar";
 }
 
@@ -27,6 +28,11 @@ struct DefaultValueTests $baz((((blah = "baz")))) # < notice that many brackets 
    test @8: Float32 = (((0.23)));
    
    foobar @9: Foobar = (((((( blah = "foobar" ))))));
+}
+
+struct UseNameBeforeUsing {
+   ref @0: TRef;
+   using TRef = Foobar;
 }
 
 @0x9eb32e19f86ee174;

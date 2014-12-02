@@ -1,16 +1,19 @@
 ﻿using System;
-using System.Diagnostics;
 
 namespace CapnProto.Schema.Parser
 {
-   class Field
+   abstract class Member
    {
       public String Name;
       public Int32 Number;
+      public Annotation Annotation;
+      public abstract override String ToString();
+   }
+
+   class Field : Member
+   {
       public CapnpType Type;
       public Value Value;
-
-      public Annotation Annotation;
 
       public override string ToString()
       {
@@ -20,16 +23,10 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class Method
+   class Method : Member
    {
-      public String Name;
-      public Int32 Number;
-
-      //public CapnpLambda Type;
       public Parameter[] Arguments;
       public Parameter ReturnType;
-
-      public Annotation Annotation;
 
       public override string ToString()
       {
@@ -37,18 +34,25 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class Parameter
+   class Parameter : Member
    {
-      public String Name;
       public CapnpType Type;
       public Value DefaultValue;
-      public Annotation Annotation;
 
       public override string ToString()
       {
          var d = DefaultValue == null ? "" : " = " + DefaultValue;
          var a = Annotation == null ? "" : " " + Annotation;
          return Name + " :" + Type + d + a;
+      }
+   }
+
+   class Enumerant : Member
+   {
+      public override string ToString()
+      {
+         var a = Annotation == null ? "" : " " + Annotation;
+         return Name + " @" + Number + a;
       }
    }
 
@@ -65,23 +69,18 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   // todo: verification: modules are top-level
    class CapnpModule : CapnpType
    {
-      public CapnpModule() : base(TypeKind.Module) { }
+      public CapnpModule() { }
 
       public Int64 Id;
 
-      // todo: make these IList or similar?
       public CapnpStruct[] Structs;
       public CapnpInterface[] Interfaces;
       public CapnpConst[] Constants;
       public CapnpEnum[] Enumerations;
       public CapnpAnnotation[] AnnotationDefs;
-
-      // todo: does order matter? i.e. can we use a name before the using?
       public CapnpUsing[] Usings;
-
       public Annotation[] Annotations;
 
       protected internal override CapnpType Accept(CapnpVisitor visitor)
@@ -103,34 +102,14 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   enum TypeKind
-   {
-      Primitive,
-      List,
-      Struct,
-      Module
-   }
-
-
    enum PrimitiveName
    {
-      // todo
       AnyPointer, Void, Bool, Int8, Int16, Int32, Int64, Text, Data, UInt32, UInt8, UInt16, UInt64, Float32, Float64
    }
 
    class CapnpType
    {
-      protected readonly CapnpType _parameter;
-      protected readonly TypeKind _kind;
-
-      protected CapnpType() { _kind = TypeKind.Primitive; }
-      protected CapnpType(TypeKind kind) { _kind = kind; }
-      protected CapnpType(TypeKind kind, CapnpType parameter)
-         : this(kind)
-      {
-         Debug.Assert(kind == TypeKind.List);
-         _parameter = parameter;
-      }
+      protected CapnpType() { }
 
       public static readonly CapnpType Unit = new CapnpType();
 
@@ -213,7 +192,6 @@ namespace CapnProto.Schema.Parser
       public String Name;
    }
 
-   // todo: we cannot currently handle struct typed annotations as the syntax is $foo(...) rather than $foo( (.... ) ) (ugly, of course).
    class CapnpAnnotation : CapnpNamedType
    {
       public CapnpType ArgumentType;
@@ -340,20 +318,6 @@ namespace CapnProto.Schema.Parser
    {
       public Annotation Annotation;
       public Int64? Id;
-
-      public class Enumerant
-      {
-         public String Name;
-         public Int32 Number;
-
-         public Annotation Annotation;
-
-         public override string ToString()
-         {
-            var a = Annotation == null ? "" : " " + Annotation;
-            return Name + " @" + Number + a;
-         }
-      }
 
       public Enumerant[] Enumerants;
 

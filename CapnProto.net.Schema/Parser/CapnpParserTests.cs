@@ -28,9 +28,9 @@ namespace CapnProto.Schema
 
          $file;
          $file2(12);
-         $x (); 
+         $x; 
 
-         const foo :Int32 = 123 $zz();
+         const foo :Int32 = 123 $zz;
          const bar :Text = ""Hello"";
   
 # Todo: references within consts      
@@ -169,6 +169,7 @@ namespace CapnProto.Schema
             Foo @0 :import ""foo.capnp"".Bar;
          }
 
+         struct X{}
 
       ", new[] { "foo.capnp", @" 
          @0x99;
@@ -294,7 +295,14 @@ namespace CapnProto.Schema
             text @0: Text = 'foobar';
          }
       ")]
+      [InlineData("@123; structFoo{}")]
       [InlineData("@123; struct Hex { hex @0: Int32 = 0X123; }")]
+      [InlineData(@"
+      @123;
+      annotation voidA(*): Void;
+      struct Xxx $voidA () { # < brackets here not valid
+      }
+      ")]
       public void Detect_bad_syntax(String source)
       {
          var p = new CapnpParser(source);

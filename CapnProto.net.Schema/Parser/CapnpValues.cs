@@ -4,7 +4,6 @@ using System.Diagnostics;
 
 namespace CapnProto.Schema.Parser
 {
-
    abstract class Value
    {
       public Value(CapnpType type)
@@ -65,7 +64,6 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   // todo: what does a data value look like?
    class DataValue : Value
    {
       public DataValue() : base(CapnpPrimitive.Data) { }
@@ -73,132 +71,75 @@ namespace CapnProto.Schema.Parser
 
       public override string ToString()
       {
-         return "blob"; // todo
+         return "«blob»";
       }
    }
 
-   class BoolValue : Value
+   abstract class PrimitiveValue<TPrim> : Value
+   {
+      protected PrimitiveValue(CapnpPrimitive p) : base(p) { }
+
+      public TPrim Value;
+
+      public override string ToString()
+      {
+         return Value.ToString();
+      }
+   }
+
+   class BoolValue : PrimitiveValue<Boolean>
    {
       public BoolValue() : base(CapnpPrimitive.Bool) { }
-      public Boolean Value;
-
-      public override string ToString()
-      {
-         return Value ? "true" : "false";
-      }
    }
 
-   class Int8Value : Value
+   class Int8Value : PrimitiveValue<SByte>
    {
-      public Int8Value()
-         : base(CapnpPrimitive.Int8)
-      {
-      }
-
-      public SByte Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
+      public Int8Value() : base(CapnpPrimitive.Int8) { }
    }
 
-   class Int16Value : Value
+   class Int16Value : PrimitiveValue<Int16>
    {
       public Int16Value() : base(CapnpPrimitive.Int16) { }
-      public Int16 Value;
-      public override string ToString()
-      {
-         return base.ToString();
-      }
    }
 
-   class Int32Value : Value
+   class Int32Value : PrimitiveValue<Int32>
    {
       public Int32Value() : base(CapnpPrimitive.Int32) { }
-      public Int32 Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class Int64Value : Value
+   class Int64Value : PrimitiveValue<Int64>
    {
       public Int64Value() : base(CapnpPrimitive.Int64) { }
-      public Int64 Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class UInt8Value : Value
+   class UInt8Value : PrimitiveValue<Byte>
    {
       public UInt8Value() : base(CapnpPrimitive.UInt8) { }
-      public Byte Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class UInt64Value : Value
+   class UInt64Value : PrimitiveValue<UInt64>
    {
       public UInt64Value() : base(CapnpPrimitive.UInt64) { }
-      public UInt64 Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class UInt32Value : Value
+   class UInt32Value : PrimitiveValue<UInt32>
    {
       public UInt32Value() : base(CapnpPrimitive.UInt32) { }
-      public UInt32 Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class UInt16Value : Value
+   class UInt16Value : PrimitiveValue<UInt16>
    {
       public UInt16Value() : base(CapnpPrimitive.UInt16) { }
-      public UInt16 Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class Float32Value : Value
+   class Float32Value : PrimitiveValue<Single>
    {
       public Float32Value() : base(CapnpPrimitive.Float32) { }
-      public Single Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
-   class Float64Value : Value
+   class Float64Value : PrimitiveValue<Double>
    {
       public Float64Value() : base(CapnpPrimitive.Float64) { }
-      public Double Value;
-
-      public override string ToString()
-      {
-         return Value.ToString();
-      }
    }
 
    class ListValue : Value

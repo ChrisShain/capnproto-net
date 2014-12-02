@@ -8,7 +8,7 @@ namespace CapnProto.Schema.Parser
    // todo: recursion detection
    class ImportResolutionVisitor : CapnpVisitor
    {
-      private readonly Func<string, string> _GetImportContents;
+      private readonly Func<String, String> _GetImportContents;
 
       public ImportResolutionVisitor(Func<String, String> getImportContents)
       {

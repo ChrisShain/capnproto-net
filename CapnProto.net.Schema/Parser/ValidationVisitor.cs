@@ -27,5 +27,16 @@ namespace CapnProto.Schema.Parser
             throw new InvalidOperationException("unexpected unresolved default value");
          return value;
       }
+
+      private Boolean _mVisitingModule;
+
+      protected internal override CapnpModule VisitModule(CapnpModule module)
+      {
+         if (_mVisitingModule) throw new InvalidOperationException("already visiting a module");
+         _mVisitingModule = true;
+         var m = base.VisitModule(module);
+         _mVisitingModule = false;
+         return m;
+      }
    }
 }

@@ -103,7 +103,7 @@ namespace CapnProto.Schema.Parser
          return @enum;
       }
 
-      protected internal virtual CapnpEnum.Enumerant VisitEnumerant(Parser.CapnpEnum.Enumerant e)
+      protected internal virtual Enumerant VisitEnumerant(Enumerant e)
       {
          e.Annotation = VisitAnnotation(e.Annotation);
          return e;
