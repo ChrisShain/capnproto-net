@@ -69,11 +69,9 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class CapnpModule : CapnpType
+   class CapnpModule : CapnpIdType
    {
       public CapnpModule() { }
-
-      public Int64 Id;
 
       public CapnpStruct[] Structs;
       public CapnpInterface[] Interfaces;
@@ -191,15 +189,18 @@ namespace CapnProto.Schema.Parser
    {
       public String Name;
    }
+   class CapnpIdType : CapnpNamedType
+   {
+      public UInt64? Id;
+   }
+   class CapnpAnnotatedType : CapnpIdType
+   {
+      public Annotation Annotation;
+   }
 
-   class CapnpAnnotation : CapnpNamedType
+   class CapnpAnnotation : CapnpAnnotatedType
    {
       public CapnpType ArgumentType;
-
-      // todo: move to base?
-      public Annotation Annotation;
-
-      public Int64? Id;
 
       public AnnotationTypes[] Targets;
 
@@ -250,12 +251,9 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class CapnpComposite : CapnpNamedType
+   class CapnpComposite : CapnpAnnotatedType
    {
       public CapnpType[] NestedTypes;
-
-      public Annotation Annotation;
-      public Int64? Id;
 
       public CapnpUsing[] Usings;
 
@@ -314,11 +312,8 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class CapnpEnum : CapnpNamedType
+   class CapnpEnum : CapnpAnnotatedType
    {
-      public Annotation Annotation;
-      public Int64? Id;
-
       public Enumerant[] Enumerants;
 
       protected internal override CapnpType Accept(CapnpVisitor visitor)

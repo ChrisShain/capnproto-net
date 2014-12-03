@@ -111,7 +111,7 @@ namespace CapnProto.Schema
 
       [Theory]
       [InlineData(@"
-         @0x1234;
+         @0xBADC0FFEE0DDF00D;
 
          structFoobar{
 
@@ -163,16 +163,16 @@ namespace CapnProto.Schema
 
       [Theory]
       [InlineData(@"
-         @0x1234;
+         @0xBADC0FFEE0DDF00D;
 
          struct Foobar {
-            Foo @0 :import ""foo.capnp"".Bar;
+            foo @0 :import ""foo.capnp"".Bar;
          }
 
          struct X{}
 
       ", new[] { "foo.capnp", @" 
-         @0x99;
+         @0xBADC0FFEE0DDBEEF; 
          struct Bar {}
       "})]
       public void Can_resolve_imports(String source, String[] imports)
@@ -192,7 +192,7 @@ namespace CapnProto.Schema
 
       [Theory]
       [InlineData(@"
-      @0x123;
+      @0xBADC0FFEE0DDF00D;
 
       struct Foobar {
          ref1 @0 : Bar;
@@ -219,7 +219,7 @@ namespace CapnProto.Schema
 
       [Theory]
       [InlineData(@"
-      @123;
+      @0xBADC0FFEE0DDF00D;
 
       struct Foobar
       {
@@ -229,12 +229,12 @@ namespace CapnProto.Schema
 
          usingRef @0 :TT;
 
-         unresolvedRawData @1: LaterDef = ( Foo = ""blah"", Bar = 123 );
+         unresolvedRawData @1: LaterDef = ( foo = ""blah"", bar = 123 );
       }
 
       struct LaterDef {
-          Foo @0: Text;
-          Bar @1: Int32;
+          foo @0: Text;
+          bar @1: Int32;
       }
 
       struct AA
@@ -290,18 +290,19 @@ namespace CapnProto.Schema
          # No id. 
       ")]
       [InlineData(@"
-         @123;
+         @0xBADC0FFEE0DDF00D;
          struct Singles {
             text @0: Text = 'foobar';
          }
       ")]
-      [InlineData("@123; structFoo{}")]
-      [InlineData("@123; struct Hex { hex @0: Int32 = 0X123; }")]
+      [InlineData("@0xBADC0FFEE0DDF00D; structFoo{}")]
+      [InlineData("@0xBADC0FFEE0DDF00D; struct Hex { hex @0: Int32 = 0X123; }")]
+      [InlineData("@0xBADC0FFEE0DDF00D; struct Foo {} enum Xy { foo: @1; bar @2; }")]
       [InlineData(@"
-      @123;
-      annotation voidA(*): Void;
-      struct Xxx $voidA () { # < brackets here not valid
-      }
+         @0xBADC0FFEE0DDF00D;
+         annotation voidA(*): Void;
+         struct Xxx $voidA  { # < brackets here not valid
+         }
       ")]
       public void Detect_bad_syntax(String source)
       {
@@ -316,6 +317,7 @@ namespace CapnProto.Schema
          {
             // todo: filter on exception later
             // OK
+            // throw;
          }
       }
 

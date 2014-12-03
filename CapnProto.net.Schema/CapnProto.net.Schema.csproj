@@ -81,6 +81,7 @@
     <Compile Include="Parser\CapnpValues.cs" />
     <Compile Include="Parser\CapnpVisitor.cs" />
     <Compile Include="Parser\ConstRefVisitor.cs" />
+    <Compile Include="Parser\IdGeneratingVisitor.cs" />
     <Compile Include="Parser\ImportResolutionVisitor.cs" />
     <Compile Include="Parser\ReferenceResolutionVisitor.cs" />
     <Compile Include="Parser\ScopeTrackingVisitor.cs" />

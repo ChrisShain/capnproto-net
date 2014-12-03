@@ -15,17 +15,16 @@ namespace CapnProto.Schema.Parser
          : base()
       {
          _mModule = module;
-         _mScopes.Add(module);
          _mUnresolvedReferences = new HashSet<CapnpReference>();
       }
 
       public void ResolveReferences()
       {
-         Visit(_mModule);
+         VisitModule(_mModule);
 
          if (_mUnresolvedReferences.Count > 0)
          {
-            Visit(_mModule);
+            VisitModule(_mModule);
          }
 
          if (_mUnresolvedReferences.Count > 0)

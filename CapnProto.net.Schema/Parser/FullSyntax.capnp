@@ -49,6 +49,11 @@ enum BlahEnum $pe {
 }
 enum WithId @0xa5a69bc6a92158fc {}
 
+enum NonOrderedEnum {
+  foo @1;
+  bar @0;
+}
+
 struct UseNameBeforeUsing {
    ref @0: TRef;
    using TRef = Foobar;

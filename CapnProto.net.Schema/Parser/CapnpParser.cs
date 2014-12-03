@@ -8,13 +8,14 @@ using System.Text;
 // - test, test, test
 // - compare with the c++ impl intsead of just the examples
 // - validate ordinals, they cannot contain holes (e.g. number @3 after @1)
-// - enforce UTF8 + BOM
+// - enforce UTF8 + BOM (well, allow to override)
 // - add position information to each "type"
 
 namespace CapnProto.Schema.Parser
 {
    partial class CapnpParser
    {
+      internal const UInt64 MIN_UID = 1UL << 63;
       private readonly String _source;
       private Int32 pos;
 
@@ -24,14 +25,14 @@ namespace CapnProto.Schema.Parser
          pos = 0;
       }
 
-      // todo: an id must be >= 1UL << 63
-      // todo: generate ids
-      private Int64 _ParseId()
+      private UInt64 _ParseId()
       {
          _Advance("@", skipWhiteSpace: false);
-         return _ParseInteger<Int64>();
+         var id = _ParseInteger<UInt64>();
+         if (id < MIN_UID) _Error("invalid id, too small");
+         return id;
       }
-      private Int64? _OptParseId()
+      private UInt64? _OptParseId()
       {
          if (_Peek("@")) return _ParseId();
          return null;
@@ -42,7 +43,7 @@ namespace CapnProto.Schema.Parser
          pos = 0;
          _AdvanceWhiteSpace();
 
-         Int64? id = null;
+         UInt64? id = null;
 
          var curPos = pos;
 
@@ -108,6 +109,8 @@ namespace CapnProto.Schema.Parser
       // For now split, may combine into something later.
       public CapnpModule ProcessParsedSource(CapnpModule source, Func<String, String> getImportSource)
       {
+         new IdGeneratingVisitor().VisitModule(source);
+
          new ImportResolutionVisitor(getImportSource).VisitModule(source);
 
          new ReferenceResolutionVisitor(source).ResolveReferences();
@@ -820,7 +823,7 @@ namespace CapnProto.Schema.Parser
             var defs = new Dictionary<String, Value>();
             while (true)
             {
-               var name = canHaveConstRef ? _ParseFullName() : _ParseName();
+               var name = canHaveConstRef ? _ParseFullName() : _ParseNonCapitalizedName();
 
                // A const ref *always* contains a period.
                if (name.Contains("."))
@@ -830,6 +833,8 @@ namespace CapnProto.Schema.Parser
                   else
                      _Error("invalid field name");
                }
+               else if (Char.IsUpper(name[0]))
+                  _Error("Field name in default value must start with a lower case letter.");
 
                canHaveConstRef = false;
 
