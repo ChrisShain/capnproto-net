@@ -70,6 +70,7 @@ namespace CapnProto.Schema.Parser
 
          DisableNestedType();
 
+         @struct.TypeParameters = @struct.TypeParameters.Select(p => Visit(p)).ToArray();
          @struct.Fields = @struct.Fields.Select(f => VisitField(f)).ToArray();
          @struct.Annotations = @struct.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @struct.Usings = @struct.Usings.Select(u => VisitUsing(u)).ToArray();
@@ -89,6 +90,7 @@ namespace CapnProto.Schema.Parser
 
          DisableNestedType();
 
+         @interface.TypeParameters = @interface.TypeParameters.Select(p => Visit(p)).ToArray();
          @interface.BaseInterfaces = @interface.BaseInterfaces.Select(i => Visit(i)).ToArray();
          @interface.Annotations = @interface.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @interface.Methods = @interface.Methods.Select(m => VisitMethod(m)).ToArray();

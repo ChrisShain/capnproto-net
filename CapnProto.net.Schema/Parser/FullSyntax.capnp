@@ -54,6 +54,11 @@ enum NonOrderedEnum {
   bar @0;
 }
 
+struct GenericTest(T) {
+  foo @0: T; # < which T is this? todo
+  struct T {}
+}
+
 struct UseNameBeforeUsing {
    ref @0: TRef;
    using TRef = Foobar;

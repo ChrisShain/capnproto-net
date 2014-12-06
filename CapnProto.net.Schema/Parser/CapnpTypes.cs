@@ -299,7 +299,13 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class CapnpStruct : CapnpComposite
+   class CapnpGenericType : CapnpComposite
+   {
+      // todo: validation, once resolved, must be valid type
+      public CapnpType[] TypeParameters;
+   }
+
+   class CapnpStruct : CapnpGenericType
    {
       public Field[] Fields;
 
@@ -315,7 +321,7 @@ namespace CapnProto.Schema.Parser
       }
    }
 
-   class CapnpInterface : CapnpComposite
+   class CapnpInterface : CapnpGenericType
    {
       // todo: validaiotn that these are interfaces etc
       public CapnpType[] BaseInterfaces = new CapnpType[0]; // empty<>.ar todo

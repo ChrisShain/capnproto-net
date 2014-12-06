@@ -277,9 +277,30 @@ namespace CapnProto.Schema.Parser
          return res;
       }
 
+      private CapnpType[] _OptParseGenericParameters()
+      {
+         if (_OptAdvance("("))
+         {
+            var @params = new List<CapnpType>();
+            @params.Add(_ParseType());
+
+            while (_OptAdvance(","))
+               @params.Add(_ParseType());
+
+            _Advance(")");
+
+            return @params.ToArray();
+         }
+
+         return Empty<CapnpType>.Array;
+      }
+
       private CapnpStruct _ParseStruct()
       {
          var name = _ParseCapitalizedName();
+
+         // Optional type parameters for a generic struct.
+         var typeParams = _OptParseGenericParameters();
 
          var id = _OptParseId();
 
@@ -295,6 +316,7 @@ namespace CapnProto.Schema.Parser
          {
             Name = name,
             Id = id,
+            TypeParameters = typeParams,
             Fields = block.OfType<Field>().ToArray(),
             Annotations = annotation.SingleOrEmpty(),
             Structs = block.OfType<CapnpStruct>().ToArray(),
@@ -309,6 +331,8 @@ namespace CapnProto.Schema.Parser
       private CapnpInterface _ParseInterface()
       {
          var name = _ParseCapitalizedName();
+
+         var typeParameters = _OptParseGenericParameters();
 
          var id = _OptParseId();
 
@@ -340,6 +364,7 @@ namespace CapnProto.Schema.Parser
          {
             Name = name,
             Id = id,
+            TypeParameters = typeParameters,
             Annotations = annotation.SingleOrEmpty(),
             Methods = block.OfType<Method>().ToArray(),
             BaseInterfaces = extendedIfaces == null ? Empty<CapnpType>.Array : extendedIfaces.ToArray(),
@@ -404,12 +429,7 @@ namespace CapnProto.Schema.Parser
 
                case "union":
                   if (isInterface) _Error("Interfaces cannot contain anonymous unions");
-
-                  yield return new Field
-                  {
-                     Name = null, // unnamed union
-                     Type = _ParseGroupOrUnion(isUnion: true)
-                  }; break;
+                  yield return _ParseAnonymousUnion(); break;
 
                default:
                   pos = prev;
@@ -431,30 +451,30 @@ namespace CapnProto.Schema.Parser
          CapnpType type;
          Value defaultValue = null;
          Annotation annotation = null;
+
+         // todo: simply _ParseId()?
          if (_OptAdvance("@", skipWhiteSpace: false))
          {
             // todo: check correct type
             number = _ParseInteger<Int32>();
 
             _OptAdvance("!"); // todo what is this?
-
-            _Advance(":");
-            type = _ParseType();
-
-            if (_OptAdvance("="))
-            {
-               defaultValue = _ParseDefaultValue(type);
-            }
-
-            annotation = _OptParseAnnotation();
-
-            _Advance(";");
          }
-         else
+
+         _Advance(":");
+         type = _ParseType();
+
+         var isUnionOrGroup = type is CapnpUnion || type is CapnpGroup;
+
+         if (!isUnionOrGroup && _OptAdvance("="))
          {
-            _Advance(":");
-            type = _ParseGroupOrUnion(_AdvanceOneOf("union", "group") == "union");
+            defaultValue = _ParseDefaultValue(type);
          }
+
+         annotation = _OptParseAnnotation();
+
+         if (!isUnionOrGroup)
+            _Advance(";");
 
          return new Field
          {
@@ -575,13 +595,37 @@ namespace CapnProto.Schema.Parser
          return result;
       }
 
+      private Field _ParseAnonymousUnion()
+      {
+         return new Field
+        {
+           Name = null, // unnamed union
+           Type = _ParseGroupOrUnion(isUnion: true)
+        };
+      }
+
       private CapnpType _ParseGroupOrUnion(Boolean isUnion)
       {
          _Advance("{");
 
          var flds = new List<Field>();
          while (!_OptAdvance("}"))
+         {
+            if (!isUnion)
+            {
+               // Look for anonymous union.
+               var p = pos;
+               var token = _ParseName();
+               if (token == "union")
+               {
+                  flds.Add(_ParseAnonymousUnion());
+                  continue;
+               }
+               pos = p; // todo, bit manual this
+            }
+
             flds.Add(_ParseField());
+         }
 
          if (isUnion)
             return new CapnpUnion { Fields = flds.ToArray() };

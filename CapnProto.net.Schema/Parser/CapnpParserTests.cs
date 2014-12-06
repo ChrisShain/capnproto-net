@@ -284,7 +284,7 @@ namespace CapnProto.Schema
          m = p.ProcessParsedSource(m, null);
       }
 
-      [Fact]
+    //  [Fact]
       public void Can_parse_capnp_test_file()
       {
          var source = File.ReadAllText("..\\..\\Parser\\capnp_test.capnp");
