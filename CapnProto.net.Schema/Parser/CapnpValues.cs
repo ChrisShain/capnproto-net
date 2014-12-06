@@ -22,7 +22,7 @@ namespace CapnProto.Schema.Parser
          Debug.Assert(!(constType is CapnpReference));
       }
 
-      public String FullConstName;
+      public FullName FullConstName;
 
       public override string ToString()
       {
@@ -140,6 +140,13 @@ namespace CapnProto.Schema.Parser
    class Float64Value : PrimitiveValue<Double>
    {
       public Float64Value() : base(CapnpPrimitive.Float64) { }
+   }
+
+   class EnumValue : PrimitiveValue<Int32>
+   {
+      // not sure this is the best but will do for now
+      public EnumValue() : base(CapnpPrimitive.Int32) { }
+      public String Name;
    }
 
    class ListValue : Value

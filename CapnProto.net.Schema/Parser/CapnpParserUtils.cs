@@ -12,6 +12,19 @@ namespace CapnProto.Schema.Parser
       static Empty() { }
    }
 
+   internal static class GenericExtensions
+   {
+      public static T[] SingleOrEmpty<T>(this T item) where T : class
+      {
+         return item == null ? Empty<T>.Array : new[] { item };
+      }
+
+      public static Boolean IsCapitalized(this String str)
+      {
+         return str != null && str.Length > 0 && Char.IsUpper(str[0]);
+      }
+   }
+
    internal static class RegularExtensions
    {
       public static String Group(this String expr)

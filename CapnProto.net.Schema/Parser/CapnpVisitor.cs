@@ -64,12 +64,14 @@ namespace CapnProto.Schema.Parser
       {
          if (!mEnableNestedType) return @struct;
 
-         @struct.NestedTypes = @struct.NestedTypes.Select(n => Visit(n)).ToArray();
+         @struct.Structs = @struct.Structs.Select(s => VisitStruct(s)).ToArray();
+         @struct.Interfaces = @struct.Interfaces.Select(i => VisitInterface(i)).ToArray();
+         @struct.Enumerations = @struct.Enumerations.Select(e => VisitEnum(e)).ToArray();
 
          DisableNestedType();
 
          @struct.Fields = @struct.Fields.Select(f => VisitField(f)).ToArray();
-         @struct.Annotation = VisitAnnotation(@struct.Annotation);
+         @struct.Annotations = @struct.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @struct.Usings = @struct.Usings.Select(u => VisitUsing(u)).ToArray();
 
          EnableNestedType();
@@ -81,12 +83,14 @@ namespace CapnProto.Schema.Parser
       {
          if (!mEnableNestedType) return @interface;
 
-         @interface.NestedTypes = @interface.NestedTypes.Select(t => Visit(t)).ToArray();
+         @interface.Structs = @interface.Structs.Select(s => VisitStruct(s)).ToArray();
+         @interface.Interfaces = @interface.Interfaces.Select(i => VisitInterface(i)).ToArray();
+         @interface.Enumerations = @interface.Enumerations.Select(e => VisitEnum(e)).ToArray();
 
          DisableNestedType();
 
          @interface.BaseInterfaces = @interface.BaseInterfaces.Select(i => Visit(i)).ToArray();
-         @interface.Annotation = VisitAnnotation(@interface.Annotation);
+         @interface.Annotations = @interface.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @interface.Methods = @interface.Methods.Select(m => VisitMethod(m)).ToArray();
          @interface.Usings = @interface.Usings.Select(u => VisitUsing(u)).ToArray();
 
@@ -97,7 +101,7 @@ namespace CapnProto.Schema.Parser
 
       protected internal virtual CapnpEnum VisitEnum(CapnpEnum @enum)
       {
-         @enum.Annotation = VisitAnnotation(@enum.Annotation);
+         @enum.Annotations = @enum.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @enum.Enumerants = @enum.Enumerants.Select(e => VisitEnumerant(e)).ToArray();
          return @enum;
       }
@@ -163,6 +167,7 @@ namespace CapnProto.Schema.Parser
 
       protected internal virtual CapnpUsing VisitUsing(CapnpUsing @using)
       {
+         @using.Target = Visit(@using.Target);
          return @using;
       }
 

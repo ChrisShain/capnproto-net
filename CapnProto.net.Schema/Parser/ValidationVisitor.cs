@@ -11,11 +11,12 @@ namespace CapnProto.Schema.Parser
       // todo, first collect some rules
       // - numbers should not contain any 'holes'
       // - correct application of annotations (finish below todo)
+      // - detect interfaces structs with same names etc
 
       // This should never happen with a correct parser.
       protected internal override CapnpType VisitReference(CapnpReference @ref)
       {
-         throw new InvalidOperationException("unexpected reference");
+         throw new InvalidOperationException("unexpected reference: " + @ref.FullName);
       }
 
       protected internal override CapnpType VisitImport(CapnpImport import)
@@ -30,16 +31,17 @@ namespace CapnProto.Schema.Parser
          return value;
       }
 
-      private Boolean _mVisitingModule;
+      // This is OK, in case of using t = import "x"
+      //private Boolean _mVisitingModule;
 
-      protected internal override CapnpModule VisitModule(CapnpModule module)
-      {
-         if (_mVisitingModule) throw new InvalidOperationException("already visiting a module");
-         _mVisitingModule = true;
-         var m = base.VisitModule(module);
-         _mVisitingModule = false;
-         return m;
-      }
+      //protected internal override CapnpModule VisitModule(CapnpModule module)
+      //{
+      //   if (_mVisitingModule) throw new InvalidOperationException("already visiting a module");
+      //   _mVisitingModule = true;
+      //   var m = base.VisitModule(module);
+      //   _mVisitingModule = false;
+      //   return m;
+      //}
 
       protected internal override CapnpUsing VisitUsing(CapnpUsing @using)
       {
@@ -48,13 +50,13 @@ namespace CapnProto.Schema.Parser
 
       protected internal override Method VisitMethod(Method method)
       {
-         _ValidateAnnotation(method.Annotation, AnnotationTypes.method);
+         _ValidateAnnotations(new[] { method.Annotation }, AnnotationTypes.method);
          return base.VisitMethod(method);
       }
 
       protected internal override Field VisitField(Field fld)
       {
-         _ValidateAnnotation(fld.Annotation, AnnotationTypes.field);
+         _ValidateAnnotations(new[] { fld.Annotation }, AnnotationTypes.field);
          return base.VisitField(fld);
       }
 
@@ -65,26 +67,26 @@ namespace CapnProto.Schema.Parser
 
       protected internal override Parameter VisitParameter(Parameter p)
       {
-         _ValidateAnnotation(p.Annotation, AnnotationTypes.param);
+         _ValidateAnnotations(new[] { p.Annotation }, AnnotationTypes.param);
          return base.VisitParameter(p);
       }
 
       protected internal override CapnpAnnotation VisitAnnotationDecl(CapnpAnnotation annotation)
       {
-         _ValidateAnnotation(annotation.Annotation, AnnotationTypes.annotation);
+         _ValidateAnnotations(annotation.Annotations, AnnotationTypes.annotation);
          _ValidateHaveId(annotation);
          return base.VisitAnnotationDecl(annotation);
       }
 
       protected internal override Enumerant VisitEnumerant(Enumerant e)
       {
-         _ValidateAnnotation(e.Annotation, AnnotationTypes.enumerant);
+         _ValidateAnnotations(new[] { e.Annotation }, AnnotationTypes.enumerant);
          return base.VisitEnumerant(e);
       }
 
       protected internal override CapnpEnum VisitEnum(CapnpEnum @enum)
       {
-         _ValidateAnnotation(@enum.Annotation, AnnotationTypes.@enum);
+         _ValidateAnnotations(@enum.Annotations, AnnotationTypes.@enum);
          _ValidateHaveId(@enum);
          _ValidateNumbering(@enum.Enumerants);
          return base.VisitEnum(@enum);
@@ -92,24 +94,28 @@ namespace CapnProto.Schema.Parser
 
       protected internal override CapnpStruct VisitStruct(CapnpStruct @struct)
       {
-         _ValidateAnnotation(@struct.Annotation, AnnotationTypes.@struct);
+         _ValidateAnnotations(@struct.Annotations, AnnotationTypes.@struct);
          _ValidateHaveId(@struct);
          return base.VisitStruct(@struct);
       }
 
       protected internal override CapnpInterface VisitInterface(CapnpInterface @interface)
       {
-         _ValidateAnnotation(@interface.Annotation, AnnotationTypes.@interface);
+         _ValidateAnnotations(@interface.Annotations, AnnotationTypes.@interface);
          _ValidateHaveId(@interface);
          return base.VisitInterface(@interface);
       }
 
-      private static void _ValidateAnnotation(Annotation annotation, AnnotationTypes type)
+      private static void _ValidateAnnotations(Annotation[] annotations, AnnotationTypes type)
       {
-         if (annotation == null) return;
-         var decl = (CapnpAnnotation)annotation.Declaration;
-         if (!decl.Targets.Any(t => t == AnnotationTypes.any || t == type))
-            throw new Exception("invalid annotation, cannot be applied to this declaration");
+         if (annotations == null || annotations.Length == 0) return;
+         foreach (var annotation in annotations)
+         {
+            if (annotation == null) continue;
+            var decl = (CapnpAnnotation)annotation.Declaration;
+            if (!decl.Targets.Any(t => t == AnnotationTypes.any || t == type))
+               throw new Exception("invalid annotation, cannot be applied to this declaration");
+         }
       }
 
       private static void _ValidateHaveId(CapnpIdType type)

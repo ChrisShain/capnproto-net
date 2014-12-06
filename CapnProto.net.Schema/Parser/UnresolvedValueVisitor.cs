@@ -24,6 +24,8 @@ namespace CapnProto.Schema.Parser
          return CapnpParser.ParseValue(unresolvedValue.RawData, value.Type); // < todo relative positioning for errors yadida
       }
 
+      // As the declaration may have been a reference, we can now resolve the argument because we know
+      // the type from the declaration.
       protected internal override Annotation VisitAnnotation(Annotation annotation)
       {
          if (annotation == null) return null;
@@ -31,13 +33,15 @@ namespace CapnProto.Schema.Parser
          Debug.Assert(!(annotation.Declaration is CapnpReference));
 
          var decl = (CapnpAnnotation)annotation.Declaration;
-         var v = (UnresolvedValue)annotation.Argument;
 
-         if (v == null)
+         if (annotation.Argument == null)
          {
             Debug.Assert(decl.ArgumentType == CapnpPrimitive.Void);
             return annotation;
          }
+
+         var v = annotation.Argument as UnresolvedValue;
+         if (v == null) return annotation;
 
          // Now that we know the argument type, resolve the value.
          var resolvedValue = VisitValue(new UnresolvedValue(decl.ArgumentType)

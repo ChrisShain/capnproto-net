@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 
 namespace CapnProto.Schema.Parser
 {
@@ -66,37 +67,6 @@ namespace CapnProto.Schema.Parser
       {
          var args = Argument == null ? "" : "(" + Argument + ")";
          return "$" + Declaration + args;
-      }
-   }
-
-   class CapnpModule : CapnpIdType
-   {
-      public CapnpModule() { }
-
-      public CapnpStruct[] Structs;
-      public CapnpInterface[] Interfaces;
-      public CapnpConst[] Constants;
-      public CapnpEnum[] Enumerations;
-      public CapnpAnnotation[] AnnotationDefs;
-      public CapnpUsing[] Usings;
-      public Annotation[] Annotations;
-
-      protected internal override CapnpType Accept(CapnpVisitor visitor)
-      {
-         return visitor.VisitModule(this);
-      }
-
-      // todo: these are bad, clean up ToStrings, lineendings (dont assume crlf)
-      public override string ToString()
-      {
-         return "Compiled Source: \r\n" +
-                "Id = " + Id + "\r\n" +
-                String.Join<CapnpStruct>("\r\n", Structs) + "\r\n" +
-                String.Join<CapnpInterface>("\r\n", Interfaces) + "\r\n" +
-                String.Join<CapnpConst>("\r\n", Constants) + "\r\n" +
-                String.Join<CapnpEnum>("\r\n", Enumerations) + "\r\n" +
-                String.Join<CapnpAnnotation>("\r\n", AnnotationDefs) + "\r\n" +
-                String.Join<Annotation>("\r\n", Annotations);
       }
    }
 
@@ -195,7 +165,7 @@ namespace CapnProto.Schema.Parser
    }
    class CapnpAnnotatedType : CapnpIdType
    {
-      public Annotation Annotation;
+      public Annotation[] Annotations;
    }
 
    class CapnpAnnotation : CapnpAnnotatedType
@@ -212,7 +182,7 @@ namespace CapnProto.Schema.Parser
       public override string ToString()
       {
          var arg = ArgumentType == null ? "" : "(" + ArgumentType + ")";
-         return "Annotation: " + Name + " " + arg + " " + Annotation + " targets " + String.Join<AnnotationTypes>(", ", Targets);
+         return "Annotation: " + Name + " " + arg + " " + Annotations + " targets " + String.Join<AnnotationTypes>(", ", Targets);
       }
    }
 
@@ -253,13 +223,79 @@ namespace CapnProto.Schema.Parser
 
    class CapnpComposite : CapnpAnnotatedType
    {
-      public CapnpType[] NestedTypes;
-
+      public CapnpStruct[] Structs;
+      public CapnpInterface[] Interfaces;
+      public CapnpConst[] Constants;
+      public CapnpEnum[] Enumerations;
+      public CapnpAnnotation[] AnnotationDefs;
       public CapnpUsing[] Usings;
+
+      /// <summary>
+      /// Look for the given name in contained types or constants or annotations.
+      /// </summary>
+      public CapnpType ResolveName(String name)
+      {
+         Debug.Assert(!name.Contains("."));
+         Debug.Assert(!String.IsNullOrEmpty(name));
+
+         Predicate<CapnpNamedType> predicate = i => i.Name == name;
+
+         if (Char.IsUpper(name[0]))
+         {
+            // It's a type
+            CapnpUsing @using;
+            return Array.Find(Structs, predicate) ??
+                   Array.Find(Interfaces, predicate) ??
+                   Array.Find(Enumerations, predicate) ??
+                   ((@using = Array.Find<CapnpUsing>(Usings, predicate)) == null ? null : @using.Target);
+         }
+         else
+         {
+            // It's, well, not a type.
+            return Array.Find(Constants, predicate) ??
+                   Array.Find(AnnotationDefs, predicate);
+         }
+      }
+
+      public CapnpType ResolveFullName(FullName fullName)
+      {
+         var container = this;
+         for (var i = 0; i < fullName.Count - 1; i++)
+         {
+            container = container.ResolveName(fullName[i]) as CapnpComposite;
+            if (container == null) return null;
+         }
+
+         return container.ResolveName(fullName[fullName.Count - 1]);
+      }
 
       public override string ToString()
       {
-         return String.Join<CapnpType>("\r\n", NestedTypes);
+         return "todo";
+         //return String.Join<CapnpType>("\r\n", NestedTypes);
+      }
+   }
+
+   class CapnpModule : CapnpComposite
+   {
+      public CapnpModule() { }
+
+      protected internal override CapnpType Accept(CapnpVisitor visitor)
+      {
+         return visitor.VisitModule(this);
+      }
+
+      // todo: these are bad, clean up ToStrings, lineendings (dont assume crlf)
+      public override string ToString()
+      {
+         return "Compiled Source: \r\n" +
+                "Id = " + Id + "\r\n" +
+                String.Join<CapnpStruct>("\r\n", Structs) + "\r\n" +
+                String.Join<CapnpInterface>("\r\n", Interfaces) + "\r\n" +
+                String.Join<CapnpConst>("\r\n", Constants) + "\r\n" +
+                String.Join<CapnpEnum>("\r\n", Enumerations) + "\r\n" +
+                String.Join<CapnpAnnotation>("\r\n", AnnotationDefs) + "\r\n" +
+                String.Join<Annotation>("\r\n", Annotations);
       }
    }
 
@@ -274,8 +310,27 @@ namespace CapnProto.Schema.Parser
 
       public override string ToString()
       {
-         var annot = Annotation == null ? "" : Annotation.ToString();
+         var annot = Annotations == null ? "" : Annotations.ToString();
          return "Struct " + Name + " " + annot + "\r\n   " + String.Join<Field>("\r\n   ", Fields) + "\r\n\r\n" + base.ToString();
+      }
+   }
+
+   class CapnpInterface : CapnpComposite
+   {
+      // todo: validaiotn that these are interfaces etc
+      public CapnpType[] BaseInterfaces = new CapnpType[0]; // empty<>.ar todo
+
+      public Method[] Methods;
+
+      protected internal override CapnpType Accept(CapnpVisitor visitor)
+      {
+         return visitor.VisitInterface(this);
+      }
+
+      public override string ToString()
+      {
+         var extends = BaseInterfaces.Length == 0 ? "" : " extends " + String.Join<CapnpType>(", ", BaseInterfaces);
+         return "Interface " + Name + extends + " " + Annotations + "\r\n   " + String.Join<Method>("\r\n   ", Methods) + "\r\n\r\n" + base.ToString();
       }
    }
 
@@ -299,7 +354,7 @@ namespace CapnProto.Schema.Parser
 
    class CapnpReference : CapnpType
    {
-      public String FullName;
+      public FullName FullName;
 
       protected internal override CapnpType Accept(CapnpVisitor visitor)
       {
@@ -323,26 +378,7 @@ namespace CapnProto.Schema.Parser
 
       public override string ToString()
       {
-         return "Enum " + Name + " " + Annotation + "\r\n   " + String.Join<Enumerant>("\r\n   ", Enumerants);
-      }
-   }
-
-   class CapnpInterface : CapnpComposite
-   {
-      // todo: validaiotn that these are interfaces etc
-      public CapnpType[] BaseInterfaces = new CapnpType[0]; // empty<>.ar todo
-
-      public Method[] Methods;
-
-      protected internal override CapnpType Accept(CapnpVisitor visitor)
-      {
-         return visitor.VisitInterface(this);
-      }
-
-      public override string ToString()
-      {
-         var extends = BaseInterfaces.Length == 0 ? "" : " extends " + String.Join<CapnpType>(", ", BaseInterfaces);
-         return "Interface " + Name + extends + " " + Annotation + "\r\n   " + String.Join<Method>("\r\n   ", Methods) + "\r\n\r\n" + base.ToString();
+         return "Enum " + Name + " " + Annotations + "\r\n   " + String.Join<Enumerant>("\r\n   ", Enumerants);
       }
    }
 

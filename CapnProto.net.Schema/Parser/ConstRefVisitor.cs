@@ -10,7 +10,7 @@ namespace CapnProto.Schema.Parser
 
       protected internal override CapnpModule VisitModule(CapnpModule module)
       {
-         if (_mModule != null) throw new InvalidOperationException();
+         if (_mModule != null) return module; // the case e.g. in using T = import "x"
          _mModule = module;
          return base.VisitModule(module);
       }
@@ -21,17 +21,14 @@ namespace CapnProto.Schema.Parser
          var constRef = value as ConstRefValue;
          if (constRef == null) return value;
 
-         var parts = constRef.FullConstName.Split('.');
+         // A const ref must always be fully qualified, so is resolved from top-level scope (module).
+         // todo: can we have const ref to const?
+         var resolvedRef = _mModule.ResolveFullName(constRef.FullConstName) as CapnpConst;
 
-         if (parts[0] == "")
-            return _mModule.Constants.Where(c => c.Name == parts[1]).Single().Value;
+         if (resolvedRef == null)
+            throw new Exception("const ref does not refer to a const");
 
-         // todo: other types, of course. clean up this junk
-         CapnpType declaringType = _mModule.Structs.Where(s => s.Name == parts[0]).Single();
-         for (var i = 1; i < parts.Length - 2; i++)
-            declaringType = ((CapnpStruct)declaringType).NestedTypes.Where(t => t is CapnpStruct).Cast<CapnpStruct>().Where(s => s.Name == parts[i]).Single();
-
-         return ((CapnpStruct)declaringType).NestedTypes.Where(t => t is CapnpConst).Cast<CapnpConst>().Where(c => c.Name == parts[parts.Length - 1]).Single().Value;
+         return resolvedRef.Value;
       }
    }
 }

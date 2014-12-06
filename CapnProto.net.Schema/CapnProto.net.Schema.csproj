@@ -83,6 +83,7 @@
     <Compile Include="Parser\ConstRefVisitor.cs" />
     <Compile Include="Parser\IdGeneratingVisitor.cs" />
     <Compile Include="Parser\ImportResolutionVisitor.cs" />
+    <Compile Include="Parser\FullName.cs" />
     <Compile Include="Parser\ReferenceResolutionVisitor.cs" />
     <Compile Include="Parser\ScopeTrackingVisitor.cs" />
     <Compile Include="Parser\UnresolvedValueVisitor.cs" />

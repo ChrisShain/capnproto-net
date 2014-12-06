@@ -5,9 +5,12 @@ using System.Linq;
 using System.Text;
 
 // Todo:
+// - Syntax:
+//   * data lists can have string values
+//   * @xx! numbers (what are these?)
 // - test, test, test
 // - compare with the c++ impl intsead of just the examples
-// - validate ordinals, they cannot contain holes (e.g. number @3 after @1)
+// - validate ordinals, they cannot contain holes (e.g. number @3 after @1 but no @2)
 // - enforce UTF8 + BOM (well, allow to override)
 // - add position information to each "type"
 
@@ -30,6 +33,7 @@ namespace CapnProto.Schema.Parser
          _Advance("@", skipWhiteSpace: false);
          var id = _ParseInteger<UInt64>();
          if (id < MIN_UID) _Error("invalid id, too small");
+         _OptAdvance("!"); // todo what is this?
          return id;
       }
       private UInt64? _OptParseId()
@@ -183,7 +187,7 @@ namespace CapnProto.Schema.Parser
             Id = id,
             Targets = targets.ToArray(),
             ArgumentType = argType,
-            Annotation = annotation
+            Annotations = new[] { annotation }
          };
       }
 
@@ -192,7 +196,7 @@ namespace CapnProto.Schema.Parser
          if (!_OptAdvance("$")) return null;
 
          var name = _ParseFullName();
-         var decl = new CapnpReference { FullName = name };
+         var decl = new CapnpReference { FullName = _GetFullName(name) };
 
          Value argument = null;
          if (_Peek("("))
@@ -248,6 +252,7 @@ namespace CapnProto.Schema.Parser
             return result;
          }
 
+         // todo: capitalization?
          var name = _ParseFullName();
 
          if (!_OptAdvance("="))
@@ -256,7 +261,7 @@ namespace CapnProto.Schema.Parser
             {
                Target = new CapnpReference
                {
-                  FullName = name
+                  FullName = _GetFullName(name)
                }
             };
             _Advance(";");
@@ -290,10 +295,14 @@ namespace CapnProto.Schema.Parser
          {
             Name = name,
             Id = id,
-            Fields = block.Where(o => o is Field).Cast<Field>().ToArray(),
-            Annotation = annotation,
-            NestedTypes = block.Where(o => o is CapnpType && !(o is CapnpUsing)).Cast<CapnpType>().ToArray(),
-            Usings = block.Where(o => o is CapnpUsing).Cast<CapnpUsing>().ToArray()
+            Fields = block.OfType<Field>().ToArray(),
+            Annotations = annotation.SingleOrEmpty(),
+            Structs = block.OfType<CapnpStruct>().ToArray(),
+            Interfaces = block.OfType<CapnpInterface>().ToArray(),
+            Enumerations = block.OfType<CapnpEnum>().ToArray(),
+            AnnotationDefs = block.OfType<CapnpAnnotation>().ToArray(),
+            Constants = block.OfType<CapnpConst>().ToArray(),
+            Usings = block.OfType<CapnpUsing>().ToArray()
          };
       }
 
@@ -331,10 +340,14 @@ namespace CapnProto.Schema.Parser
          {
             Name = name,
             Id = id,
-            Annotation = annotation,
+            Annotations = annotation.SingleOrEmpty(),
             Methods = block.OfType<Method>().ToArray(),
-            NestedTypes = block.OfType<CapnpType>().Where(t => !(t is CapnpUsing)).ToArray(),
             BaseInterfaces = extendedIfaces == null ? Empty<CapnpType>.Array : extendedIfaces.ToArray(),
+            Structs = block.OfType<CapnpStruct>().ToArray(),
+            Interfaces = block.OfType<CapnpInterface>().ToArray(),
+            Enumerations = block.OfType<CapnpEnum>().ToArray(),
+            AnnotationDefs = block.OfType<CapnpAnnotation>().ToArray(),
+            Constants = block.OfType<CapnpConst>().ToArray(),
             Usings = block.OfType<CapnpUsing>().ToArray()
          };
       }
@@ -387,7 +400,7 @@ namespace CapnProto.Schema.Parser
                   yield return _ParseConst(); break;
 
                case "annotation":
-                  throw new Exception();
+                  yield return _ParseAnnotationDeclaration(); break;
 
                case "union":
                   if (isInterface) _Error("Interfaces cannot contain anonymous unions");
@@ -420,7 +433,10 @@ namespace CapnProto.Schema.Parser
          Annotation annotation = null;
          if (_OptAdvance("@", skipWhiteSpace: false))
          {
+            // todo: check correct type
             number = _ParseInteger<Int32>();
+
+            _OptAdvance("!"); // todo what is this?
 
             _Advance(":");
             type = _ParseType();
@@ -545,11 +561,18 @@ namespace CapnProto.Schema.Parser
                // Type may not yet be defined, so first return a reference which we'll resolve after parsing.
                return new CapnpReference
                {
-                  FullName = text
+                  FullName = _GetFullName(text)
                };
          }
+      }
 
-         throw new Exception();
+      private FullName _GetFullName(String fullName)
+      {
+         // tood: the error here could be more descriptive
+         FullName result;
+         if (!FullName.TryParse(fullName, out result))
+            _Error("The given full name '{0}' is not valid.", fullName);
+         return result;
       }
 
       private CapnpType _ParseGroupOrUnion(Boolean isUnion)
@@ -566,21 +589,21 @@ namespace CapnProto.Schema.Parser
             return new CapnpGroup { Fields = flds.ToArray() };
       }
 
-      private String _Unescape(Char c)
+      private Char _Unescape(Char c)
       {
          switch (c)
          {
-            case 'a': return "\a";
-            case 'b': return "\b";
-            case 'f': return "\f";
-            case 'n': return "\n";
-            case 'r': return "\r";
-            case 't': return "\t";
-            case 'v': return "\v";
+            case 'a': return '\a';
+            case 'b': return '\b';
+            case 'f': return '\f';
+            case 'n': return '\n';
+            case 'r': return '\r';
+            case 't': return '\t';
+            case 'v': return '\v';
             case 'x':
                {
                   var hex = _AdvanceExpr(_kHexRange.Times(2), "hex escape sequence");
-                  return ((Char)Int32.Parse(hex, NumberStyles.HexNumber)).ToString();
+                  return ((Char)Int32.Parse(hex, NumberStyles.HexNumber));
                }
             default:
                if (c >= '0' && c <= '7')
@@ -594,10 +617,10 @@ namespace CapnProto.Schema.Parser
                      if (_OptAdvanceExpr(_kOctalRange, out d))
                         first = (first << 3) | Int32.Parse(d, NumberStyles.Integer, NumberFormatInfo.InvariantInfo);
                   }
-                  return ((Char)first).ToString();
+                  return (Char)first;
                }
 
-               return c.ToString();
+               return c;
          }
       }
 
@@ -667,7 +690,12 @@ namespace CapnProto.Schema.Parser
          {
             var negate = _OptAdvance("-");
             if (_OptAdvance("inf")) return negate ? "-inf" : "inf";
-            _AdvanceExpr(@"(\d|-)(\.|[exa-fA-F]|\d)*", "valid number");
+            if (_OptAdvance("nan"))
+            {
+               if (negate) _Error("cannot negate nan"); // cant we? todo
+               return "nan";
+            }
+            _AdvanceExpr(@"(\d|-)(\.|[exa-fA-F]|\d|-)*", "valid number");
          }
          else
          {
@@ -678,7 +706,10 @@ namespace CapnProto.Schema.Parser
             if (name == "true" || name == "false" || name == "inf")
                return name;
 
-            _Advance("=");
+            // If a name it could be an enumeran.
+            if (!_OptAdvance("="))
+               return name;
+
             _ParseDefaultValue(null);
 
             // Skip struct definition.
@@ -720,7 +751,7 @@ namespace CapnProto.Schema.Parser
 
                return new ConstRefValue(type)
                {
-                  FullConstName = token
+                  FullConstName = _GetFullName(token)
                };
             }
 
@@ -764,11 +795,19 @@ namespace CapnProto.Schema.Parser
                         return new Float64Value { Value = Double.PositiveInfinity };
                      _Error("Uexpected token 'inf'");
                   }
+                  if (name == "nan")
+                  {
+                     if (type == CapnpPrimitive.Float32)
+                        return new Float32Value { Value = Single.NaN };
+                     else if (type == CapnpPrimitive.Float64)
+                        return new Float64Value { Value = Double.NaN };
+                     _Error("unexpected token 'nan'");
+                  }
 
                   if (!name.Contains(".")) _Error("Invalid const reference");
                   return new ConstRefValue(type)
                   {
-                     FullConstName = name
+                     FullConstName = _GetFullName(name)
                   };
                }
             }
@@ -777,21 +816,21 @@ namespace CapnProto.Schema.Parser
             {
                var token = _ParseFullName();
                if (token == "void") return new VoidValue();
-               return new ConstRefValue(type) { FullConstName = token };
+               return new ConstRefValue(type) { FullConstName = _GetFullName(token) };
             }
 
             if (type == CapnpPrimitive.Text)
             {
                if (_Peek("\""))
                   return new TextValue { Value = _ParseText() };
-               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
+               return new ConstRefValue(type) { FullConstName = _GetFullName(_ParseFullName()) };
             }
 
             if (type == CapnpPrimitive.Data)
             {
                if (_Peek("0x\""))
                   return new DataValue { Blob = _ParseBlob() };
-               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
+               return new ConstRefValue(type) { FullConstName = _GetFullName(_ParseFullName()) };
             }
 
             if (type == CapnpPrimitive.AnyPointer)
@@ -802,7 +841,7 @@ namespace CapnProto.Schema.Parser
          else if (type is CapnpList)
          {
             if (!_OptAdvance("["))
-               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
+               return new ConstRefValue(type) { FullConstName = _GetFullName(_ParseFullName()) };
 
             var listType = (CapnpList)type;
             var values = new List<Value>();
@@ -815,6 +854,17 @@ namespace CapnProto.Schema.Parser
             _Advance("]");
 
             return new ListValue(listType) { Values = values };
+         }
+         else if (type is CapnpEnum)
+         {
+            var @enum = (CapnpEnum)type;
+            var value = _ParseNonCapitalizedName();
+            var enumerant = @enum.Enumerants.Where(e => e.Name == value).Single(); // < todo
+            return new EnumValue
+            {
+               Name = value,
+               Value = enumerant.Number
+            };
          }
          else if (type is CapnpStruct)
          {
@@ -829,7 +879,7 @@ namespace CapnProto.Schema.Parser
                if (name.Contains("."))
                {
                   if (canHaveConstRef)
-                     return new ConstRefValue(type) { FullConstName = name };
+                     return new ConstRefValue(type) { FullConstName = _GetFullName(name) };
                   else
                      _Error("invalid field name");
                }
@@ -912,10 +962,12 @@ namespace CapnProto.Schema.Parser
          Single result;
          if (_OptAdvance("inf"))
             result = Single.PositiveInfinity;
+         else if (_OptAdvance("nan"))
+            result = Single.NaN;
          else
          {
             const String errorMsg = "valid float32 literal";
-            var token = _AdvanceExpr(@"(\d|\.|e)+", errorMsg);
+            var token = _AdvanceExpr(@"(\d|\.|e|-)+", errorMsg);
             if (!Single.TryParse(token, NumberStyles.Float, NumberFormatInfo.InvariantInfo, out result)) _Error(errorMsg);
          }
 
@@ -929,10 +981,12 @@ namespace CapnProto.Schema.Parser
          Double result;
          if (_OptAdvance("inf"))
             result = Double.PositiveInfinity;
+         else if (_OptAdvance("nan"))
+            result = Double.NaN;
          else
          {
             const String errorMsg = "valid float64 literal";
-            var token = _AdvanceExpr(@"(\d|\.|e)+", errorMsg);
+            var token = _AdvanceExpr(@"(\d|\.|e|-)+", errorMsg);
             if (!Double.TryParse(token, NumberStyles.Float, NumberFormatInfo.InvariantInfo, out result)) _Error(errorMsg);
          }
 
@@ -972,7 +1026,7 @@ namespace CapnProto.Schema.Parser
          {
             Name = name,
             Id = id,
-            Annotation = annotation,
+            Annotations = annotation.SingleOrEmpty(),
             Enumerants = fields.ToArray()
          };
       }

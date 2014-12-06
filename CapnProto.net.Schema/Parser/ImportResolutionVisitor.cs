@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
 
 namespace CapnProto.Schema.Parser
 {
@@ -32,12 +31,7 @@ namespace CapnProto.Schema.Parser
          if (importedType is CapnpReference)
          {
             var @ref = (CapnpReference)importedType;
-
-            // todo: refactor, this needs to use proper resolution logic
-            if (@ref.FullName.Contains(".")) throw new Exception("todo: imports with scoped names");
-
-            // todo: of course this is not confined to structs only
-            importedType = parsedSource.Structs.Where(s => s.Name == @ref.FullName).Single();
+            return parsedSource.ResolveFullName(@ref.FullName);
          }
          else Debug.Assert(false);
 
@@ -47,7 +41,11 @@ namespace CapnProto.Schema.Parser
       protected internal override CapnpUsing VisitUsing(CapnpUsing @using)
       {
          if (@using.Target is CapnpImport)
+         {
             @using.Target = _ResolveImport((CapnpImport)@using.Target);
+            if (@using.Target == null)
+               throw new Exception("failed to resolve import"); // todo
+         }
 
          return base.VisitUsing(@using);
       }
@@ -55,7 +53,11 @@ namespace CapnProto.Schema.Parser
       protected internal override Field VisitField(Field fld)
       {
          if (fld.Type is CapnpImport)
+         {
             fld.Type = _ResolveImport((CapnpImport)fld.Type);
+            if (fld.Type == null)
+               throw new Exception("failed to resolve field import, fld is " + fld.Name); // todo
+         }
 
          return fld;
       }

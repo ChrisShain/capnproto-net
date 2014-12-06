@@ -57,11 +57,31 @@ enum NonOrderedEnum {
 struct UseNameBeforeUsing {
    ref @0: TRef;
    using TRef = Foobar;
+   
+   # This does not work.
+   # enumVal @1: NonOrderedEnum = NonOrderedEnum.foo;
+   # This, however, does.
+   enumVal @1: NonOrderedEnum = foo;
 }
 
 struct NameUniqueness {
    #const Foobar : Text = "blah";
    #struct Foobar {}
+}
+
+struct NestingStruct {
+   enum Foobar { }
+   struct Nested {}
+   interface INested {}
+   const nestedKonst: Text = "foo";
+   annotation nestedAnnot(*): Text;
+}
+interface INestingInterface {
+   enum Foobar { }
+   struct Nested {}
+   interface INested {}
+   const nestedKonst: Text = "foo";
+   annotation nestedAnnot(*): Text;
 }
 
 @0x9eb32e19f86ee174;

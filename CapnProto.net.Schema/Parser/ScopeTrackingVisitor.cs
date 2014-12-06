@@ -2,13 +2,16 @@ using System.Collections.Generic;
 
 namespace CapnProto.Schema.Parser
 {
+   // Tracks current scope. May replace this by tracking a parent scope for each type, not sure.
+
    class ScopeTrackingVisitor : CapnpVisitor
    {
-      protected readonly List<CapnpIdType> _mScopes;
+      // todo: must be capnpcomposite
+      protected readonly List<CapnpComposite> _mScopes;
 
       protected ScopeTrackingVisitor()
       {
-         _mScopes = new List<CapnpIdType>();
+         _mScopes = new List<CapnpComposite>();
       }
 
       protected CapnpIdType CurrentScope { get { return _mScopes[_mScopes.Count - 1]; } }
