@@ -4,12 +4,13 @@ using System.Text;
 
 namespace CapnProto.Schema.Parser
 {
-   class IdGeneratingVisitor : ScopeTrackingVisitor
+   class IdGeneratingVisitor : CapnpVisitor
    {
-      private static UInt64 _GenerateId(CapnpAnnotatedType type, CapnpIdType scope)
+      private static UInt64 _GenerateId(CapnpAnnotatedType type)
       {
          if (type.Id != null) return type.Id.Value;
 
+         var scope = type.Scope;
          if (scope.Id == null) throw new InvalidOperationException("scope has no id set");
 
          var byteCount = Encoding.UTF8.GetByteCount(type.Name);
@@ -34,7 +35,7 @@ namespace CapnProto.Schema.Parser
       {
          if (@struct.Id == null)
             // Note that TopScope is the parent scope here (i.e. not yet the current struct)
-            @struct.Id = _GenerateId(@struct, CurrentScope);
+            @struct.Id = _GenerateId(@struct);
 
          return base.VisitStruct(@struct);
       }
@@ -42,7 +43,7 @@ namespace CapnProto.Schema.Parser
       protected internal override CapnpInterface VisitInterface(CapnpInterface @interface)
       {
          if (@interface.Id == null)
-            @interface.Id = _GenerateId(@interface, CurrentScope);
+            @interface.Id = _GenerateId(@interface);
 
          return base.VisitInterface(@interface);
       }
@@ -50,7 +51,7 @@ namespace CapnProto.Schema.Parser
       protected internal override CapnpEnum VisitEnum(CapnpEnum @enum)
       {
          if (@enum.Id == null)
-            @enum.Id = _GenerateId(@enum, CurrentScope);
+            @enum.Id = _GenerateId(@enum);
 
          return base.VisitEnum(@enum);
       }
@@ -58,7 +59,7 @@ namespace CapnProto.Schema.Parser
       protected internal override CapnpAnnotation VisitAnnotationDecl(CapnpAnnotation annotation)
       {
          if (annotation.Id == null)
-            annotation.Id = _GenerateId(annotation, CurrentScope);
+            annotation.Id = _GenerateId(annotation);
          return base.VisitAnnotationDecl(annotation);
       }
    }

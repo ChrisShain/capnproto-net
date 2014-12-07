@@ -1,7 +1,35 @@
 ﻿using System;
+using System.Diagnostics;
+using System.Linq;
 
 namespace CapnProto.Schema.Parser
 {
+   struct NamePart // < todo better name
+   {
+      internal NamePart(String name, FullName[] typeParams)
+      {
+         Debug.Assert(!name.Contains("."));
+         Name = name;
+         TypeParameters = typeParams ?? Empty<FullName>.Array;
+      }
+
+      public readonly String Name;
+      public readonly FullName[] TypeParameters;
+
+      public override String ToString()
+      {
+         if (TypeParameters.Length == 0)
+            return Name;
+
+         return Name + "(" + String.Join(", ", TypeParameters) + ")";
+      }
+
+      public override Boolean Equals(Object obj)
+      {
+         throw new Exception("todo");
+      }
+   }
+
    struct FullName
    {
       private String _mRaw;
@@ -10,28 +38,77 @@ namespace CapnProto.Schema.Parser
       {
          get
          {
-            return _mRaw ?? (_mRaw = String.Join(".", _mNames, _mFromIndex, _mNames.Length - _mFromIndex));
+            if (_mRaw == null)
+               _mRaw = (IsTopLevelConst ? "." : "") + String.Join(".", _mNames.Select(n => n.ToString()).ToArray(), _mFromIndex, _mNames.Length - _mFromIndex); // todo
+            return _mRaw;
          }
       }
 
       private readonly Int32 _mFromIndex;
-      private readonly String[] _mNames;
+      private readonly NamePart[] _mNames;
 
-      private FullName(String[] parts, Int32 fromIndex)
+      //internal FullName(Name[] parts, Int32 fromIndex)
+      //{
+      //   _mNames = parts;
+      //   _mFromIndex = fromIndex;
+      //   _mRaw = null;
+
+      //   IsTopLevelConst = false;
+      //}
+
+      private FullName(NamePart[] parts, Int32 fromIndex)
       {
+         Debug.Assert(parts.All(p => p.TypeParameters != null));
+
          _mNames = parts;
          _mFromIndex = fromIndex;
          _mRaw = null;
+         IsTopLevelConst = false;
       }
 
-      private FullName(String fullName, String[] parts, Int32 fromIndex)
-         : this(parts, fromIndex)
+      internal FullName(NamePart[] parts, Boolean isTopLevelConst = false)
       {
-         _mRaw = fullName;
+         _mNames = parts;
+         _mFromIndex = 0;
+         _mRaw = null;
+
+         Debug.Assert(!isTopLevelConst || parts.Length == 1);
+         Debug.Assert(parts.All(p => p.TypeParameters != null));
+
+         IsTopLevelConst = isTopLevelConst;
+      }
+
+      public Boolean IsSimple
+      {
+         get
+         {
+            return Count == 1 && this[0].TypeParameters.Length == 0;
+         }
+      }
+
+      public NamePart Last
+      {
+         get { return this[Count - 1]; }
+      }
+
+      public readonly Boolean IsTopLevelConst;
+
+      public Boolean CouldBeConstRef
+      {
+         // A const ref always contains a period.
+         get { return (IsTopLevelConst || Count > 1) && this[Count - 1].TypeParameters.Length == 0 && !this[Count - 1].Name.IsCapitalized(); }
+      }
+
+      public Boolean HasGenericParameters
+      {
+         get
+         {
+            return _mNames.Skip(_mFromIndex).Any(n => n.TypeParameters.Length > 0);
+         }
       }
 
       public Int32 Count { get { return _mNames.Length - _mFromIndex; } }
-      public String this[Int32 i] { get { return _mNames[_mFromIndex + i]; } }
+      public NamePart this[Int32 i] { get { return _mNames[_mFromIndex + i]; } }
 
       public override String ToString()
       {
@@ -60,67 +137,8 @@ namespace CapnProto.Schema.Parser
          if (other == null) return false;
          if (other.Value.Count != Count) return false;
          for (var i = 0; i < Count; i++)
-            if (this[i] != other.Value[i]) return false;
+            if (!(this[i].Equals(other.Value[i]))) return false;
          return true;
-      }
-
-      public static Boolean TryParse(String fullName, out FullName parsedName)
-      {
-         if (String.IsNullOrWhiteSpace(fullName)) goto ERROR;
-
-         var pidx = fullName.IndexOf('.');
-         if (pidx < 0)
-         {
-            parsedName = new FullName(fullName, new[] { fullName }, 0);
-            return true;
-         }
-
-         if (pidx == 0) // global const ref
-         {
-            if (fullName.Length == 1) goto ERROR;
-            pidx = fullName.IndexOf('.', 1);
-            if (pidx >= 0) goto ERROR;
-            if (Char.IsUpper(fullName[1])) goto ERROR;
-            parsedName = new FullName(fullName, new[] { fullName.Substring(1) }, 0);
-            return true;
-         }
-
-         var count = 2;
-         for (pidx = fullName.IndexOf('.', pidx + 1); pidx >= 0; pidx = fullName.IndexOf('.', pidx + 1), count += 1) ;
-
-         var names = new String[count];
-         pidx = fullName.IndexOf('.');
-         names[0] = fullName.Substring(0, pidx);
-         for (var i = 1; i < count; i++)
-         {
-            var next = i == count - 1 ? fullName.Length : fullName.IndexOf('.', pidx + 1);
-
-            names[i] = fullName.Substring(pidx + 1, next - pidx - 1);
-            pidx = next;
-         }
-
-         // Validate.
-         for (var i = 0; i < names.Length - 1; i++)
-         {
-            if (names[i].Length == 0)
-               goto ERROR;
-
-            // This name must refer to a scope thus be capitalized.
-            if (!names[i].IsCapitalized())
-               goto ERROR;
-         }
-
-         // The last part can refer either to a type or something else.
-         var lastName = names[names.Length - 1];
-         if (lastName.Length == 0)
-            goto ERROR;
-
-         parsedName = new FullName(fullName, names, 0);
-         return true;
-
-      ERROR:
-         parsedName = new FullName();
-         return false;
       }
    }
 }

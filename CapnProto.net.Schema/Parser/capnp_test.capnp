@@ -546,6 +546,11 @@ struct TestGenerics(Foo, Bar) {
     inner2Text @4 :AliasInner2Text;
     revFoo @5 :AliasRev.AliasFoo;
   }
+  
+  struct Test {
+    floppy @0: TestGenerics(Bar, Foo).AliasFoo;
+    floppy2 @0: TestGenerics(Foo, Bar).AliasFoo;
+  }
 }
 
 struct TestGenericsWrapper(Foo, Bar) {
@@ -557,7 +562,8 @@ struct TestGenericsWrapper2 {
 }
 
 interface TestImplicitMethodParams {
-  call @0 [T, U] (foo :T, bar :U) -> TestGenerics(T, U);
+  # todo
+  # call @0 [T, U] (foo :T, bar :U) -> TestGenerics(T, U);
 }
 
 struct TestUseGenerics $TestGenerics(Text, Data).ann("foo") {

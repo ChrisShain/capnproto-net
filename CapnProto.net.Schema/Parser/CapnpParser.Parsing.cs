@@ -12,19 +12,11 @@ namespace CapnProto.Schema.Parser
       private static readonly String _kHexRange = "[0-9a-fA-F]";
       private static readonly String _kOctalRange = "[0-7]";
 
-      //private static class _StringExtensions
-      //{
-      //   public String Times(this String str, Int32 x)
-      //   {
-      //      return str + "{" + x.ToString(NumberFormatInfo.InvariantInfo) + "}";
-      //   }
-      //}
-
       private Exception _Error(String error, params Object[] args)
       {
          Int32 column = pos;
-         var line = _GetLine(_source, pos);
-         var lineNum = _FindLineNumber(_source, ref column);
+         var line = _GetLine(_mSource, pos);
+         var lineNum = _FindLineNumber(_mSource, ref column);
          var positionalMessage = lineNum + ": " + line + "\r\n" + new String(' ', lineNum.ToString().Length) + "  "; // culture todo
          if (column > 0) positionalMessage += new String(' ', column);
          positionalMessage += "^";
@@ -115,17 +107,17 @@ namespace CapnProto.Schema.Parser
 
       private Char _AdvanceChar()
       {
-         if (pos > _source.Length - 1)
+         if (pos > _mSource.Length - 1)
             _Error("Unexpected end of input.");
-         return _source[pos++];
+         return _mSource[pos++];
       }
 
       private void _AdvanceWhiteSpace()
       {
-         for (; pos < _source.Length; )
-            if (_source[pos] == '#')
+         for (; pos < _mSource.Length; )
+            if (_mSource[pos] == '#')
                _AdvanceComment();
-            else if (_IsWhiteSpace(_source[pos]))
+            else if (_IsWhiteSpace(_mSource[pos]))
                pos += 1;
             else
                break;
@@ -133,22 +125,22 @@ namespace CapnProto.Schema.Parser
 
       private void _AdvanceComment()
       {
-         Debug.Assert(_source[pos] == '#');
+         Debug.Assert(_mSource[pos] == '#');
 
          pos += 1;
-         if (pos == _source.Length) return;
-         var idx = _source.IndexOf('\n', pos);
-         if (idx < 0) pos = _source.Length;
+         if (pos == _mSource.Length) return;
+         var idx = _mSource.IndexOf('\n', pos);
+         if (idx < 0) pos = _mSource.Length;
          else pos = idx + 1;
       }
 
       private void _Expect(String token)
       {
-         if (pos + token.Length > _source.Length)
+         if (pos + token.Length > _mSource.Length)
             _Error("Expected '{0}'.", token);
 
          for (var i = 0; i < token.Length; i++)
-            if (token[i] != _source[pos + i])
+            if (token[i] != _mSource[pos + i])
                _Error("Expected '{0}'.", token);
       }
 
@@ -185,9 +177,9 @@ namespace CapnProto.Schema.Parser
 
       private String _AdvanceUntil(Char match)
       {
-         for (var start = pos; pos < _source.Length; pos++)
-            if (_source[pos] == match)
-               return _source.Substring(start, pos - start);
+         for (var start = pos; pos < _mSource.Length; pos++)
+            if (_mSource[pos] == match)
+               return _mSource.Substring(start, pos - start);
 
          throw _Error("Expected '{0}', unexpected end of input.", match);
       }
@@ -211,7 +203,7 @@ namespace CapnProto.Schema.Parser
       {
          token = null;
          var r = new Regex(@"\G(" + regex + ")", RegexOptions.CultureInvariant);
-         var m = r.Match(_source, pos);
+         var m = r.Match(_mSource, pos);
          if (!m.Success) return false;
          pos += m.Length;
          _AdvanceWhiteSpace();
@@ -233,11 +225,11 @@ namespace CapnProto.Schema.Parser
       {
          Debug.Assert(skipWhiteSpace || !requireWhiteSpace);
 
-         if (pos + token.Length >= _source.Length) return false;
+         if (pos + token.Length > _mSource.Length) return false;
 
          var i = 0;
          for (i = 0; i < token.Length; i++)
-            if (token[i] != _source[pos + i]) return false;
+            if (token[i] != _mSource[pos + i]) return false;
 
          pos += i;
 

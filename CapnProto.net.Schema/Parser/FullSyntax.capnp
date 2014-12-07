@@ -14,6 +14,10 @@ struct Foobar $voidAn {
 
 struct AnnotationTest $baz(.constantFoo) {}
 
+# Can declare a struct called List.
+# It's apparently possible to override List(T), but should check. TODO
+# struct List(T) {} 
+
 struct DefaultValueTests $baz((((blah = "baz")))) # < notice that many brackets are allowed by capnp tool
 {
    text @0: Text = "foobar: \t\0 \12 \123 \xAB ";
@@ -54,9 +58,88 @@ enum NonOrderedEnum {
   bar @0;
 }
 
-struct GenericTest(T) {
-  foo @0: T; # < which T is this? todo
-  struct T {}
+# Todo: stuff that resolves as "Text".
+struct TextTest {
+  struct Text {}
+}
+
+struct GenericStruct(T, U) {
+   # This works: TODO
+   # struct Text {}
+}
+struct GenericTest1 {
+   foo @0: GenericStruct(Text, Text);
+}
+
+
+#struct GenericTest(T) {
+#  foo @0: T; # < which T is this? todo
+#  struct T {}
+#}
+#
+#struct GenericTest2 {
+#  gen @0: GenericTest(GenericTest.T);
+##  
+#  # This does not appear to work, capnp parser throws an error on "test".
+#  # x @1: GenericTest(Text) = (foo = "test");
+#}
+#
+#interface IGenericInterface(TFoobar) {
+#   blah @0 (x: TFoobar) -> (y: TFoobar);
+#}
+#
+## A partially constructed generic type.
+#interface ISimple{}
+#interface ITwoGenericParams(T,U) { }
+#interface IInheritFromTwoGen(T) extends(ITwoGenericParams(T, Text)) {
+#   call @0 (x: T);
+#}
+#
+#interface IGeneric(T, U) {
+#   annotation foobar(*):T;
+#}
+
+interface IFoo2
+{
+   annotation foo(*): Text;
+ }
+interface IBar2 extends(IFoo2) {
+
+}
+
+# Hah, so much for inheritance. The following does not work in capnp:
+#struct Foo2Test $IBar2.foo("text") {
+
+#}
+
+struct A(T) {
+  # Note: there appears no way to refer to the outer T within B. This compiles OK though.
+  struct B(T) {
+     x @0: T; 
+  }
+}
+
+struct Test(T) {
+   struct Test2(U) {
+      x @0: T;
+      
+      annotation test2(*): U;
+   }
+}
+
+## Wont work with U= Int32 here -> only pointer types as generic params. TODO detect this too
+#struct TestTest $Test(Text).Test2(List(Int32)).test2([2]) {
+#
+#}
+#struct TestTest2(T) $Test(T).Test2(Text).test2("foo") {
+#}
+
+interface INoBrackets {
+   # Instead of using brackets, it appears you can use a struct as parameters.
+   # TODO
+   # test @0 UseNameBeforeUsing -> (qux: Text);
+   
+   # TODO: implicit parameters
 }
 
 struct UseNameBeforeUsing {

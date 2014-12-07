@@ -112,7 +112,8 @@ namespace CapnProto.Schema.Parser
          foreach (var annotation in annotations)
          {
             if (annotation == null) continue;
-            var decl = (CapnpAnnotation)annotation.Declaration;
+            var decl = annotation.Declaration as CapnpAnnotation;
+            if (decl == null) decl = (CapnpAnnotation)((CapnpBoundGenericType)annotation.Declaration).OpenType;
             if (!decl.Targets.Any(t => t == AnnotationTypes.any || t == type))
                throw new Exception("invalid annotation, cannot be applied to this declaration");
          }

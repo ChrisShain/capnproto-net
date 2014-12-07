@@ -161,6 +161,19 @@ namespace CapnProto.Schema.Parser
       }
    }
 
+   class UnionValue : Value
+   {
+      public UnionValue(CapnpUnion union) : base(union) { }
+
+      public String FieldName;
+      public Value Value;
+
+      public override string ToString()
+      {
+         return "Union value for " + FieldName + " = " + Value;
+      }
+   }
+
    class StructValue : Value
    {
       public StructValue(CapnpStruct type) : base(type) { }

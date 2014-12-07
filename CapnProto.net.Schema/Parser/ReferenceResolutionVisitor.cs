@@ -1,13 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace CapnProto.Schema.Parser
 {
+   // Look at edge cases const lookup vs annotation lookup (TODO).
    class ReferenceResolutionVisitor : ScopeTrackingVisitor
    {
       private readonly CapnpModule _mModule;
 
       private Int32 _mUnresolvedRefCount = 0;
+      private List<CapnpReference> _mRefs = new List<CapnpReference>();
 
       public ReferenceResolutionVisitor(CapnpModule module)
          : base()
@@ -20,12 +23,16 @@ namespace CapnProto.Schema.Parser
          // Visit the module twice. The reason this works is that the first time we have an unresolved reference
          // it must be a forward reference, thus we must have seen its target after the first pass and only one more
          // pass is needed.
+         // Todo: I'll keep this for now as it's easier to debug, however, we could fold the first pass into our parser
+         // because it already resolve and parses some values directly. That would mean we only require one pass here.
          _mUnresolvedRefCount = 0;
+         _mRefs.Clear();
          VisitModule(_mModule);
 
          if (_mUnresolvedRefCount > 0)
          {
             _mUnresolvedRefCount = 0;
+            _mRefs.Clear();
             VisitModule(_mModule);
          }
 
@@ -35,11 +42,18 @@ namespace CapnProto.Schema.Parser
       protected internal override CapnpType VisitReference(CapnpReference @ref)
       {
          _mUnresolvedRefCount += 1;
-         var result = ResolveName(@ref.FullName);
-         if (result != null && !(result is CapnpReference))
-            _mUnresolvedRefCount -= 1;
+         _mRefs.Add(@ref);
+         var result = mCurrentScope.ResolveFullName(@ref.FullName);
 
-         return result ?? @ref;
+         if (result != null && !(result is CapnpReference))
+         {
+            _mUnresolvedRefCount -= 1;
+            _mRefs.Remove(@ref);
+            return result;
+         }
+
+         // No change, nothing resolved.
+         return @ref;
       }
 
       protected internal override Value VisitValue(Value value)
@@ -63,31 +77,6 @@ namespace CapnProto.Schema.Parser
             };
 
          return value;
-      }
-
-      private CapnpType ResolveName(FullName name)
-      {
-         Debug.Assert(name.Count > 0);
-
-         Int32 level;
-         CapnpType result = null;
-
-         // Find the first scope that defines the first part of the name.
-         for (level = _mScopes.Count - 1; level >= 0; level--)
-         {
-            result = _mScopes[level].ResolveName(name[0]);
-            if (result != null)
-               break;
-         }
-
-         if (result == null || name.Count == 1)
-            return result;
-
-         var container = result as CapnpComposite;
-         if (container == null)
-            return null;
-
-         return container.ResolveFullName(name.From(1));
       }
    }
 }

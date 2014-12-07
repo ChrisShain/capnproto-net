@@ -284,13 +284,25 @@ namespace CapnProto.Schema
          m = p.ProcessParsedSource(m, null);
       }
 
-    //  [Fact]
-      public void Can_parse_capnp_test_file()
+      [Theory]
+      [InlineData("..\\..\\Parser\\capnp_test.capnp")]
+      [InlineData("..\\..\\Parser\\capnp_rpc.capnp")]
+      public void Can_parse_capnp_test_file(String capnpFile)
       {
-         var source = File.ReadAllText("..\\..\\Parser\\capnp_test.capnp");
+         var source = File.ReadAllText(capnpFile);
          var p = new CapnpParser(source);
          var m = p.Parse();
-         m = p.ProcessParsedSource(m, null);
+         m = p.ProcessParsedSource(m, s =>
+         {
+            if (s == "c++.capnp" || s == "/capnp/c++.capnp")
+               return @"
+                  @0xbdf87d7bb8304e81;
+                  $namespace(""capnp::annotations"");
+                  annotation namespace(file): Text;
+                  annotation name(field, enumerant, struct, enum, interface, method, param, group, union): Text;
+               ";
+            throw new Exception("don't understand schema.capnp import " + s);
+         });
       }
 
       [Theory]
@@ -349,23 +361,6 @@ namespace CapnProto.Schema
          Double d;
          Assert.True(NumberParser<Double>.TryParse("-3.1415", NumberStyles.Float, NumberFormatInfo.InvariantInfo, out d));
          Assert.Equal(-3.1415, d);
-      }
-
-      [Theory]
-      [InlineData("Foo.Bar", true)]
-      [InlineData(".constant", true)]
-      [InlineData(".BadConst", false)]
-      [InlineData("Foo.const", true)]
-      [InlineData("Foo.Const", true)]
-      [InlineData("..bar", false)]
-      [InlineData("bar..foo", false)]
-      [InlineData("Bar..foo", false)]
-      [InlineData("Foo.Bar.", false)]
-      [InlineData("Foo.Bar..", false)]
-      public void Can_parse_full_names(String fullName, Boolean result)
-      {
-         FullName f;
-         Assert.Equal(result, FullName.TryParse(fullName, out f));
       }
    }
 }

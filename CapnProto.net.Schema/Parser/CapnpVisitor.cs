@@ -6,6 +6,7 @@ namespace CapnProto.Schema.Parser
    class CapnpVisitor
    {
       protected Boolean mEnableNestedType = true;
+      protected CapnpModule mActiveModule;
 
       protected void EnableNestedType()
       {
@@ -41,6 +42,10 @@ namespace CapnProto.Schema.Parser
 
       protected internal virtual CapnpModule VisitModule(CapnpModule module)
       {
+         // An imported module has already been processed.
+         if (mActiveModule != null && mActiveModule != module) return module;
+         mActiveModule = module;
+
          module.Structs = module.Structs.Select(s => VisitStruct(s)).ToArray();
          module.Interfaces = module.Interfaces.Select(i => VisitInterface(i)).ToArray();
          module.Constants = module.Constants.Select(c => VisitConst(c)).ToArray();
@@ -66,14 +71,15 @@ namespace CapnProto.Schema.Parser
 
          @struct.Structs = @struct.Structs.Select(s => VisitStruct(s)).ToArray();
          @struct.Interfaces = @struct.Interfaces.Select(i => VisitInterface(i)).ToArray();
-         @struct.Enumerations = @struct.Enumerations.Select(e => VisitEnum(e)).ToArray();
 
          DisableNestedType();
 
-         @struct.TypeParameters = @struct.TypeParameters.Select(p => Visit(p)).ToArray();
+         @struct.Enumerations = @struct.Enumerations.Select(e => VisitEnum(e)).ToArray();
          @struct.Fields = @struct.Fields.Select(f => VisitField(f)).ToArray();
+         @struct.AnnotationDefs = @struct.AnnotationDefs.Select(ad => VisitAnnotationDecl(ad)).ToArray();
          @struct.Annotations = @struct.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @struct.Usings = @struct.Usings.Select(u => VisitUsing(u)).ToArray();
+         @struct.Constants = @struct.Constants.Select(c => VisitConst(c)).ToArray();
 
          EnableNestedType();
 
@@ -86,19 +92,33 @@ namespace CapnProto.Schema.Parser
 
          @interface.Structs = @interface.Structs.Select(s => VisitStruct(s)).ToArray();
          @interface.Interfaces = @interface.Interfaces.Select(i => VisitInterface(i)).ToArray();
-         @interface.Enumerations = @interface.Enumerations.Select(e => VisitEnum(e)).ToArray();
 
          DisableNestedType();
 
-         @interface.TypeParameters = @interface.TypeParameters.Select(p => Visit(p)).ToArray();
+         @interface.Enumerations = @interface.Enumerations.Select(e => VisitEnum(e)).ToArray();
          @interface.BaseInterfaces = @interface.BaseInterfaces.Select(i => Visit(i)).ToArray();
+         @interface.AnnotationDefs = @interface.AnnotationDefs.Select(ad => VisitAnnotationDecl(ad)).ToArray();
          @interface.Annotations = @interface.Annotations.Select(a => VisitAnnotation(a)).ToArray();
          @interface.Methods = @interface.Methods.Select(m => VisitMethod(m)).ToArray();
          @interface.Usings = @interface.Usings.Select(u => VisitUsing(u)).ToArray();
+         @interface.Constants = @interface.Constants.Select(c => VisitConst(c)).ToArray();
 
          EnableNestedType();
 
          return @interface;
+      }
+
+      protected internal virtual CapnpGenericParameter VisitGenericParameter(CapnpGenericParameter @param)
+      {
+         return @param;
+      }
+
+      protected internal virtual CapnpBoundGenericType VisitClosedType(CapnpBoundGenericType closed)
+      {
+         closed.OpenType = (CapnpNamedType)Visit(closed.OpenType);
+         if (closed.ParentScope != null)
+            closed.ParentScope = VisitClosedType(closed.ParentScope);
+         return closed;
       }
 
       protected internal virtual CapnpEnum VisitEnum(CapnpEnum @enum)
@@ -124,8 +144,16 @@ namespace CapnProto.Schema.Parser
 
       protected internal virtual Method VisitMethod(Method method)
       {
-         method.Arguments = method.Arguments.Select(p => VisitParameter(p)).ToArray();
-         method.ReturnType = VisitParameter(method.ReturnType);
+         if (method.Arguments.Params != null)
+            method.Arguments.Params = method.Arguments.Params.Select(p => VisitParameter(p)).ToArray();
+         else
+            method.Arguments.Struct = Visit(method.Arguments.Struct);
+
+         if (method.ReturnType.Params != null)
+            method.ReturnType.Params = method.ReturnType.Params.Select(p => VisitParameter(p)).ToArray();
+         else
+            method.ReturnType.Struct = Visit(method.ReturnType.Struct);
+
          method.Annotation = VisitAnnotation(method.Annotation);
          return method;
       }

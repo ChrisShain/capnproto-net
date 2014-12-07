@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
 
 namespace CapnProto.Schema.Parser
 {
@@ -16,7 +17,7 @@ namespace CapnProto.Schema.Parser
       public CapnpType Type;
       public Value Value;
 
-      public override string ToString()
+      public override String ToString()
       {
          var namedType = Type as CapnpNamedType;
          var typeStr = namedType == null ? Type.ToString() : namedType.Name;
@@ -24,14 +25,30 @@ namespace CapnProto.Schema.Parser
       }
    }
 
+   class ParamOrStruct<T1, T2>
+   {
+      public ParamOrStruct(T1 left) { Params = left; Struct = default(T2); }
+      public ParamOrStruct(T2 right) { Params = default(T1); Struct = right; }
+
+      public T1 Params;
+      public T2 Struct;
+   }
+
    class Method : Member
    {
-      public Parameter[] Arguments = Empty<Parameter>.Array;
-      public Parameter ReturnType;
+      public ParamOrStruct<Parameter[], CapnpType> Arguments;
 
-      public override string ToString()
+      public ParamOrStruct<Parameter[], CapnpType> ReturnType;
+
+      public override String ToString()
       {
-         return Name + " @" + Number + "(" + String.Join<Parameter>(", ", Arguments) + ") -> (" + ReturnType + ")";
+         var args = Arguments.Params == null ? Arguments.Struct.ToString()
+                                           : "(" + String.Join<Parameter>(", ", Arguments.Params) + ")";
+
+         var rets = ReturnType.Params == null ? ReturnType.Struct.ToString()
+                                           : "(" + String.Join<Parameter>(", ", ReturnType.Params) + ")";
+
+         return Name + " @" + Number + args + "-> " + rets;
       }
    }
 
@@ -40,7 +57,7 @@ namespace CapnProto.Schema.Parser
       public CapnpType Type;
       public Value DefaultValue;
 
-      public override string ToString()
+      public override String ToString()
       {
          var d = DefaultValue == null ? "" : " = " + DefaultValue;
          var a = Annotation == null ? "" : " " + Annotation;
@@ -50,7 +67,7 @@ namespace CapnProto.Schema.Parser
 
    class Enumerant : Member
    {
-      public override string ToString()
+      public override String ToString()
       {
          var a = Annotation == null ? "" : " " + Annotation;
          return Name + " @" + Number + a;
@@ -63,7 +80,7 @@ namespace CapnProto.Schema.Parser
 
       public Value Argument;
 
-      public override string ToString()
+      public override String ToString()
       {
          var args = Argument == null ? "" : "(" + Argument + ")";
          return "$" + Declaration + args;
@@ -82,10 +99,11 @@ namespace CapnProto.Schema.Parser
       public static readonly CapnpType Unit = new CapnpType();
 
       public virtual Boolean IsNumeric { get { return false; } }
+      public virtual Boolean IsGeneric { get { return false; } }
 
       internal protected virtual CapnpType Accept(CapnpVisitor visitor)
       {
-         throw new NotImplementedException();
+         throw new NotImplementedException("todo: implement Accept for " + this.GetType().Name);
       }
    }
 
@@ -111,6 +129,31 @@ namespace CapnProto.Schema.Parser
       public static readonly CapnpPrimitive Text = new CapnpPrimitive(PrimitiveName.Text);
       public static readonly CapnpPrimitive Data = new CapnpPrimitive(PrimitiveName.Data);
 
+      public static Boolean TryParse(String token, out CapnpPrimitive result)
+      {
+         result = null;
+         switch (token)
+         {
+            case "Int8": result = CapnpPrimitive.Int8; return true;
+            case "Int16": result = CapnpPrimitive.Int16; return true;
+            case "Int32": result = CapnpPrimitive.Int32; return true;
+            case "Int64": result = CapnpPrimitive.Int64; return true;
+            case "UInt8": result = CapnpPrimitive.UInt8; return true;
+            case "UInt16": result = CapnpPrimitive.UInt16; return true;
+            case "UInt32": result = CapnpPrimitive.UInt32; return true;
+            case "UInt64": result = CapnpPrimitive.UInt64; return true;
+            case "Float32": result = CapnpPrimitive.Float32; return true;
+            case "Float64": result = CapnpPrimitive.Float64; return true;
+            case "Text": result = CapnpPrimitive.Text; return true;
+            case "Data": result = CapnpPrimitive.Data; return true;
+            case "Void": result = CapnpPrimitive.Void; return true;
+            case "Bool": result = CapnpPrimitive.Bool; return true;
+            case "AnyPointer": result = CapnpPrimitive.AnyPointer; return true;
+
+            default: return false;
+         }
+      }
+
       protected internal override CapnpType Accept(CapnpVisitor visitor)
       {
          return visitor.VisitPrimitive(this);
@@ -126,7 +169,7 @@ namespace CapnProto.Schema.Parser
          }
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          return Kind.ToString();
       }
@@ -134,6 +177,7 @@ namespace CapnProto.Schema.Parser
 
    class CapnpList : CapnpType
    {
+      // todo: unify generic types with struct
       public CapnpType Parameter;
 
       protected internal override CapnpType Accept(CapnpVisitor visitor)
@@ -141,7 +185,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitList(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          var namedType = Parameter as CapnpNamedType;
          var paramStr = namedType == null ? Parameter.ToString() : namedType.Name;
@@ -158,6 +202,8 @@ namespace CapnProto.Schema.Parser
    class CapnpNamedType : CapnpType
    {
       public String Name;
+
+      public CapnpComposite Scope;
    }
    class CapnpIdType : CapnpNamedType
    {
@@ -179,7 +225,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitAnnotationDecl(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          var arg = ArgumentType == null ? "" : "(" + ArgumentType + ")";
          return "Annotation: " + Name + " " + arg + " " + Annotations + " targets " + String.Join<AnnotationTypes>(", ", Targets);
@@ -214,7 +260,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitImport(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          return Type == null ? "Import: " + File :
                                "Import: " + File + "." + Type;
@@ -225,15 +271,52 @@ namespace CapnProto.Schema.Parser
    {
       public CapnpStruct[] Structs;
       public CapnpInterface[] Interfaces;
+
       public CapnpConst[] Constants;
       public CapnpEnum[] Enumerations;
       public CapnpAnnotation[] AnnotationDefs;
       public CapnpUsing[] Usings;
 
+      public CapnpModule Module
+      {
+         get
+         {
+            if (this is CapnpModule) return (CapnpModule)this;
+            for (var p = Scope; p != null; p = p.Scope)
+               if (p.Scope == null)
+                  return (CapnpModule)p.Scope;
+            throw new InvalidOperationException();
+         }
+      }
+
+      private CapnpPrimitive _ResolvePrimitive(String name)
+      {
+         if (!(this is CapnpModule)) return null;
+
+         CapnpPrimitive result;
+         return CapnpPrimitive.TryParse(name, out result) ? result : null;
+      }
+
+      /// <summary>
+      /// Returns a generic type that is closed using the generic parameters, that is to say it is open.
+      /// </summary>
+      public CapnpBoundGenericType MakeOpenGenericType()
+      {
+         var generic = this as CapnpGenericType;
+         if (generic == null) return null;
+
+         return new CapnpBoundGenericType
+         {
+            OpenType = generic,
+            ParentScope = generic.Scope.MakeOpenGenericType(),
+            TypeParameters = generic.TypeParameters
+         };
+      }
+
       /// <summary>
       /// Look for the given name in contained types or constants or annotations.
       /// </summary>
-      public CapnpType ResolveName(String name)
+      private CapnpType _ResolveName(String name)
       {
          Debug.Assert(!name.Contains("."));
          Debug.Assert(!String.IsNullOrEmpty(name));
@@ -244,10 +327,20 @@ namespace CapnProto.Schema.Parser
          {
             // It's a type
             CapnpUsing @using;
-            return Array.Find(Structs, predicate) ??
+
+            // Note: modules are never generic.
+            var genericThis = this as CapnpGenericType;
+            var genericParms = genericThis == null ? Empty<CapnpGenericParameter>.Array
+                                                   : genericThis.TypeParameters.Cast<CapnpGenericParameter>().ToArray();
+
+            // Note: todo we must double check this order is correct
+            // todo: a top level struct must not be called "Text" > must detect
+            return Array.Find(genericParms, predicate) ??
+                   Array.Find(Structs, predicate) ??
                    Array.Find(Interfaces, predicate) ??
                    Array.Find(Enumerations, predicate) ??
-                   ((@using = Array.Find<CapnpUsing>(Usings, predicate)) == null ? null : @using.Target);
+                   ((@using = Array.Find<CapnpUsing>(Usings, predicate)) == null ? null : @using.Target) ??
+                   _ResolvePrimitive(name);
          }
          else
          {
@@ -257,19 +350,155 @@ namespace CapnProto.Schema.Parser
          }
       }
 
-      public CapnpType ResolveFullName(FullName fullName)
+      private CapnpType _ResolveName(NamePart part, CapnpComposite nameScope, CapnpBoundGenericType genericScope = null)
       {
-         var container = this;
-         for (var i = 0; i < fullName.Count - 1; i++)
+         var result = _ResolveName(part.Name);
+
+         if (result == null)
          {
-            container = container.ResolveName(fullName[i]) as CapnpComposite;
-            if (container == null) return null;
+            // Todo: this is somewhat "bolted" on, can we unify with generics?
+            if (part.Name == "List" && part.TypeParameters.Length == 1)
+            {
+               var param = nameScope.ResolveFullName(part.TypeParameters[0]);
+               if (param == null) return null;
+               return new CapnpList
+               {
+                  Parameter = param
+               };
+            }
          }
 
-         return container.ResolveName(fullName[fullName.Count - 1]);
+         // E.g. an unresolved Using.
+         if (result is CapnpReference) return result;
+
+         if (result is CapnpGenericType)
+         {
+            // Resolve generic parameters given our generic state.
+            // Note that the name could refer to a generic parameter creating a *partially closed* type.
+            var generic = (CapnpGenericType)result;
+
+            // We don't allow *partial* closing of a generic type (there's no syntax for it).
+            if (generic.TypeParameters.Length != part.TypeParameters.Length && part.TypeParameters.Length > 0)
+               return null;
+
+            // Nothing to parameterize.
+            if (generic.TypeParameters.Length == 0 && part.TypeParameters.Length > 0)
+               return null;
+
+            // If the type does not actually have generic parameters, and we're not a nested type of a generic type, we're done.
+            if (!generic.IsGeneric && genericScope == null)
+               return result;
+
+            Debug.Assert(generic.TypeParameters.Length == part.TypeParameters.Length || part.TypeParameters.Length == 0);
+
+            var resolvedParams = part.TypeParameters.Length == 0 ? generic.TypeParameters : // the type is fully open
+                                                                   part.TypeParameters.Select(p => nameScope.ResolveFullName(p)).ToArray();
+
+            // If any of the type parameters are unresolved, we have to wait.
+            if (resolvedParams.Any(p => p == null || p is CapnpReference)) return null;
+
+            // The generic scope is the scope in which generic parameters our bound.
+            // If none are defined the parent scope is closed using just the generic parameters.
+            var parentScope = genericScope ?? generic.Scope.MakeOpenGenericType();
+
+            return new CapnpBoundGenericType
+            {
+               OpenType = generic,
+               ParentScope = parentScope,
+               TypeParameters = resolvedParams
+            };
+         }
+         else if (result is CapnpBoundGenericType)
+         {
+            var closed = (CapnpBoundGenericType)result;
+
+            if (part.TypeParameters.Length > 0 && closed.TypeParameters.Length != part.TypeParameters.Length)
+               return null;
+
+            var resolvedParams = closed.TypeParameters;
+
+            if (part.TypeParameters.Length > 0)
+            {
+               // Cannot be partially closed and it makes no sense to close an already fully closed generic type
+               Debug.Assert(closed.TypeParameters.All(p => (p is CapnpGenericParameter)));
+
+               resolvedParams = part.TypeParameters.Select(p => nameScope.ResolveFullName(p)).ToArray();
+               if (resolvedParams.Any(p => p == null || p is CapnpReference)) return null;
+            }
+
+            // Return a new closed generic whose scope is the current genericScope if defined.
+            // Note that in the case both genericScope and clode.ParentScope exist, genericScope is "more closed" but point
+            // to the same open type.
+            Debug.Assert(genericScope == null || closed.ParentScope == null || genericScope.OpenType == closed.ParentScope.OpenType);
+
+            return new CapnpBoundGenericType
+            {
+               OpenType = closed.OpenType,
+               ParentScope = genericScope ?? closed.ParentScope,
+               TypeParameters = resolvedParams
+            };
+         }
+         else if (part.TypeParameters.Length > 0)
+            // The name defines generic parameters but the type is not generic.
+            return null;
+         else if (result is CapnpGenericParameter)
+            return result;
+         else if (genericScope != null)
+         {
+            // An annotation or enumeration or whatever contained within a generic struct is itself generic.
+            return new CapnpBoundGenericType
+            {
+               OpenType = (CapnpNamedType)result,
+               ParentScope = genericScope,
+               TypeParameters = Empty<CapnpType>.Array
+            };
+         }
+         else
+            return result;
       }
 
-      public override string ToString()
+      public CapnpType ResolveFullName(FullName fullName)
+      {
+         // Find the first scope in which to start looking.
+         CapnpComposite startScope = this;
+         CapnpType result = null;
+         for (var scope = startScope; scope != null; scope = scope.Scope)
+         {
+            result = scope._ResolveName(fullName[0], this, null);
+            if (result != null) break;
+         }
+
+         if (result == null || fullName.Count == 1)
+            return result;
+
+         // Resolve rest.
+         var container = result;
+         for (var i = 1; i < fullName.Count; i++)
+         {
+            if (container is CapnpBoundGenericType)
+            {
+               var generic = (CapnpBoundGenericType)container;
+               container = ((CapnpGenericType)generic.OpenType)._ResolveName(fullName[i], this, generic); // todo: this cast should succeed with correct grammar, but perhaps may fail with a bad one
+
+               // If the reference is to a generic parameter it must resolve.
+               // Note that if the type is still open it could resolve to a generic parameter.
+               if (container is CapnpGenericParameter)
+                  container = generic.ResolveGenericParameter((CapnpGenericParameter)container);
+
+               if (container == null) return null;
+            }
+            else if (container is CapnpComposite)
+            {
+               container = ((CapnpComposite)container)._ResolveName(fullName[i].Name);
+               if (container == null) return null;
+            }
+            else
+               return null;
+         }
+         return container;
+      }
+
+      public override String ToString()
       {
          return "todo";
          //return String.Join<CapnpType>("\r\n", NestedTypes);
@@ -286,7 +515,7 @@ namespace CapnProto.Schema.Parser
       }
 
       // todo: these are bad, clean up ToStrings, lineendings (dont assume crlf)
-      public override string ToString()
+      public override String ToString()
       {
          return "Compiled Source: \r\n" +
                 "Id = " + Id + "\r\n" +
@@ -299,10 +528,119 @@ namespace CapnProto.Schema.Parser
       }
    }
 
+   /// <summary>
+   /// Represents a type with generic parameters bound.
+   /// Note, however, that this binding could be to generic parameters so this type could still be fully "open".
+   /// </summary>
+   class CapnpBoundGenericType : CapnpType
+   {
+      // Note that some of these could be themselves generic, if this type is only partially closed.
+      public CapnpType[] TypeParameters;
+
+      // Note: usually this is a generic type, however, an annotation contained with a generic struct is also generic.
+      public CapnpNamedType OpenType;
+
+      public CapnpBoundGenericType ParentScope;
+
+      public Boolean IsFullyClosed
+      {
+         get
+         {
+            return (TypeParameters.Length == 0 || !TypeParameters.Any(p => p is CapnpGenericParameter)) &&
+                   (ParentScope == null || ParentScope.IsFullyClosed);
+         }
+      }
+
+      // Returns true if (recursively) all generic parameters have been bound.
+      public Boolean IsFullyOpen
+      {
+         get
+         {
+            return (TypeParameters.Length == 0 || TypeParameters.All(p => p is CapnpGenericParameter)) &&
+                   (ParentScope == null || ParentScope.IsFullyOpen);
+         }
+      }
+
+      /// <summary>
+      /// Given the generic and its generic parameter bindings, bind for as much as possible any generic parameters in the current
+      /// partially open type.
+      /// </summary>
+      public CapnpBoundGenericType CloseWith(CapnpBoundGenericType generic)
+      {
+         Debug.Assert(!IsFullyClosed);
+
+         var typeParams = this.TypeParameters.Select(param => param is CapnpGenericParameter ? generic.ResolveGenericParameter((CapnpGenericParameter)param) ?? param
+                                                                                             : param).ToArray();
+
+         return new CapnpBoundGenericType
+         {
+            OpenType = this.OpenType,
+            ParentScope = this.ParentScope == null ? null : this.ParentScope.CloseWith(generic),
+            TypeParameters = typeParams
+         };
+      }
+
+      public CapnpType ResolveGenericParameter(CapnpGenericParameter parameter)
+      {
+         var genericOpenType = OpenType as CapnpGenericType;
+         var index = genericOpenType == null ? -2 : Array.IndexOf(genericOpenType.TypeParameters, parameter);
+         if (index < 0) return ParentScope == null ? null : ParentScope.ResolveGenericParameter(parameter);
+         var result = TypeParameters[index];
+         if (result is CapnpGenericParameter && ParentScope != null)
+            return ParentScope.ResolveGenericParameter((CapnpGenericParameter)result);
+         return result;
+      }
+
+      protected internal override CapnpType Accept(CapnpVisitor visitor)
+      {
+         return visitor.VisitClosedType(this);
+      }
+   }
+
    class CapnpGenericType : CapnpComposite
    {
       // todo: validation, once resolved, must be valid type
-      public CapnpType[] TypeParameters;
+      public CapnpGenericParameter[] TypeParameters;
+
+      //// If closed, points to the open type. Null otherwise.
+      //// dont set (todo)
+      //public CapnpType OpenType;
+
+      /// <summary>
+      /// Returns true if this type has type parameeters, or its parent does.
+      /// </summary>
+      public override Boolean IsGeneric
+      {
+         get
+         {
+            return TypeParameters.Length > 0 || (this.Scope != null && this.Scope is CapnpGenericType && ((CapnpGenericType)this.Scope).IsGeneric);
+         }
+      }
+
+      //public Boolean IsOpenGenericType
+      //{
+      //   get
+      //   {
+      //      //return IsGeneric && (TypeParameters[0] is CapnpGenericParameter);
+      //      return OpenType == null;
+      //   }
+      //}
+
+      //public Boolean IsClosedGenericType
+      //{
+      //   get
+      //   {
+      //      return OpenType != null;
+      //      //return IsGeneric && !IsOpenGenericType;
+      //   }
+      //}
+
+      //public CapnpGenericType Close(CapnpType[] @params)
+      //{
+      //   Debug.Assert(@params.Length == TypeParameters.Length);
+
+      //   throw new Exception("todo");
+      //}
    }
 
    class CapnpStruct : CapnpGenericType
@@ -314,7 +652,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitStruct(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          var annot = Annotations == null ? "" : Annotations.ToString();
          return "Struct " + Name + " " + annot + "\r\n   " + String.Join<Field>("\r\n   ", Fields) + "\r\n\r\n" + base.ToString();
@@ -333,7 +671,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitInterface(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          var extends = BaseInterfaces.Length == 0 ? "" : " extends " + String.Join<CapnpType>(", ", BaseInterfaces);
          return "Interface " + Name + extends + " " + Annotations + "\r\n   " + String.Join<Method>("\r\n   ", Methods) + "\r\n\r\n" + base.ToString();
@@ -351,10 +689,25 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitConst(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          var a = Annotation == null ? "" : Annotation + " ";
          return "Const " + Name + " " + a + "=" + Value;
+      }
+   }
+
+   // todo: validation, if parameters are used the type must be generic
+
+   class CapnpGenericParameter : CapnpNamedType
+   {
+      protected internal override CapnpType Accept(CapnpVisitor visitor)
+      {
+         return visitor.VisitGenericParameter(this);
+      }
+
+      public override String ToString()
+      {
+         return "Generic parm: " + Name;
       }
    }
 
@@ -367,7 +720,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitReference(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          return "Reference to " + FullName;
       }
@@ -382,14 +735,14 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitEnum(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          return "Enum " + Name + " " + Annotations + "\r\n   " + String.Join<Enumerant>("\r\n   ", Enumerants);
       }
    }
 
    // Can these introduce scopes?
-   class CapnpUnion : CapnpType
+   class CapnpUnion : CapnpAnnotatedType
    {
       public Field[] Fields;
 
@@ -398,7 +751,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitUnion(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          return "Union:\r\n" + String.Join<Field>("\r\n", Fields);
       }
@@ -413,7 +766,7 @@ namespace CapnProto.Schema.Parser
          return visitor.VisitGroup(this);
       }
 
-      public override string ToString()
+      public override String ToString()
       {
          return "Group:\r\n" + String.Join<Field>("\r\n", Fields);
       }

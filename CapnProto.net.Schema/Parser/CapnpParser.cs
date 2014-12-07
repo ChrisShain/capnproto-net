@@ -1,8 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+
+// todo: to support generics
+// 1. we need to track scopes, so a scope needs to know its parent scope because we need to resolve generic paremeters for a generic parent
+// 2. we need to enhance FullName to become a list of names with FullName parameters
+// 3. we need to update resolve ref to deal with his
+// 4. given a closed generic type, we must be able to resolve a member type for annotation values or default values in other classes
+
 
 // Todo:
 // - Syntax:
@@ -19,12 +27,15 @@ namespace CapnProto.Schema.Parser
    partial class CapnpParser
    {
       internal const UInt64 MIN_UID = 1UL << 63;
-      private readonly String _source;
+
+      private readonly String _mSource;
+
+      private CapnpComposite _mCurrentScope;
       private Int32 pos;
 
       public CapnpParser(String capnpSource)
       {
-         _source = capnpSource;
+         _mSource = capnpSource;
          pos = 0;
       }
 
@@ -60,6 +71,11 @@ namespace CapnProto.Schema.Parser
          var annotations = new List<Annotation>();
          var usings = new List<CapnpUsing>();
 
+         var module = new CapnpModule();
+
+         Debug.Assert(_mCurrentScope == null);
+         _mCurrentScope = module;
+
          String token;
          for (; ; )
          {
@@ -91,23 +107,21 @@ namespace CapnProto.Schema.Parser
                break;
          }
 
-         if (pos < _source.Length - 1)
+         if (pos < _mSource.Length - 1)
             _Error("Expected end of input.");
 
          if (id == null)
             _Error("Missing id in module");
 
-         return new CapnpModule
-         {
-            Id = id.Value,
-            Constants = consts.ToArray(),
-            Structs = structs.ToArray(),
-            Interfaces = interfaces.ToArray(),
-            Enumerations = enums.ToArray(),
-            AnnotationDefs = annotDefs.ToArray(),
-            Annotations = annotations.ToArray(),
-            Usings = usings.ToArray(),
-         };
+         module.Id = id.Value;
+         module.Constants = consts.ToArray();
+         module.Structs = structs.ToArray();
+         module.Interfaces = interfaces.ToArray();
+         module.Enumerations = enums.ToArray();
+         module.AnnotationDefs = annotDefs.ToArray();
+         module.Annotations = annotations.ToArray();
+         module.Usings = usings.ToArray();
+         return module;
       }
 
       // For now split, may combine into something later.
@@ -143,6 +157,7 @@ namespace CapnProto.Schema.Parser
          return new CapnpConst
          {
             Name = name,
+            Scope = _mCurrentScope,
             Value = value,
             Annotation = annotation
          };
@@ -184,6 +199,7 @@ namespace CapnProto.Schema.Parser
          return new CapnpAnnotation
          {
             Name = name,
+            Scope = _mCurrentScope,
             Id = id,
             Targets = targets.ToArray(),
             ArgumentType = argType,
@@ -196,7 +212,10 @@ namespace CapnProto.Schema.Parser
          if (!_OptAdvance("$")) return null;
 
          var name = _ParseFullName();
-         var decl = new CapnpReference { FullName = _GetFullName(name) };
+         var decl = new CapnpReference
+         {
+            FullName = name
+         };
 
          Value argument = null;
          if (_Peek("("))
@@ -255,52 +274,58 @@ namespace CapnProto.Schema.Parser
          // todo: capitalization?
          var name = _ParseFullName();
 
+         if (name.HasGenericParameters)
+            throw new Exception("check"); // todo, does this ever make sense?
+
          if (!_OptAdvance("="))
          {
             var result = new CapnpUsing
             {
+               Name = name.Last.Name, // this implements using Foo.Bar which is effectively using Bar = Foo.Bar
                Target = new CapnpReference
                {
-                  FullName = _GetFullName(name)
+                  FullName = name,
                }
             };
             _Advance(";");
             return result;
          }
 
+         Debug.Assert(name.IsSimple);
+
          var res = new CapnpUsing
          {
-            Name = name,
+            Name = name.ToString(),
             Target = _ParseImportOrType()
          };
          _Advance(";");
          return res;
       }
 
-      private CapnpType[] _OptParseGenericParameters()
+      private IEnumerable<String> _OptParseGenericParameters()
       {
          if (_OptAdvance("("))
          {
-            var @params = new List<CapnpType>();
-            @params.Add(_ParseType());
+            yield return _ParseName();
 
             while (_OptAdvance(","))
-               @params.Add(_ParseType());
+               yield return _ParseName();
 
             _Advance(")");
-
-            return @params.ToArray();
          }
-
-         return Empty<CapnpType>.Array;
       }
 
       private CapnpStruct _ParseStruct()
       {
          var name = _ParseCapitalizedName();
 
+         // Push scope.
+         var @struct = new CapnpStruct();
+         var previousScope = _mCurrentScope;
+         _mCurrentScope = @struct;
+
          // Optional type parameters for a generic struct.
-         var typeParams = _OptParseGenericParameters();
+         var typeParams = _OptParseGenericParameters().Select(n => new CapnpGenericParameter { Name = n }).ToArray();
 
          var id = _OptParseId();
 
@@ -308,31 +333,38 @@ namespace CapnProto.Schema.Parser
 
          _Advance("{");
 
-         var block = _ParseBlock(isInterface: false).ToArray(); // todo toarray just to force unwinding for debugging
+         var block = _ParseBlock(isInterface: false).ToArray();
 
          _Advance("}");
 
-         return new CapnpStruct
-         {
-            Name = name,
-            Id = id,
-            TypeParameters = typeParams,
-            Fields = block.OfType<Field>().ToArray(),
-            Annotations = annotation.SingleOrEmpty(),
-            Structs = block.OfType<CapnpStruct>().ToArray(),
-            Interfaces = block.OfType<CapnpInterface>().ToArray(),
-            Enumerations = block.OfType<CapnpEnum>().ToArray(),
-            AnnotationDefs = block.OfType<CapnpAnnotation>().ToArray(),
-            Constants = block.OfType<CapnpConst>().ToArray(),
-            Usings = block.OfType<CapnpUsing>().ToArray()
-         };
+         // Pop scope.
+         _mCurrentScope = previousScope;
+
+         @struct.Name = name;
+         @struct.Scope = previousScope;
+         @struct.Id = id;
+         @struct.TypeParameters = typeParams;
+         @struct.Fields = block.OfType<Field>().ToArray();
+         @struct.Annotations = annotation.SingleOrEmpty();
+         @struct.Structs = block.OfType<CapnpStruct>().ToArray();
+         @struct.Interfaces = block.OfType<CapnpInterface>().ToArray();
+         @struct.Enumerations = block.OfType<CapnpEnum>().ToArray();
+         @struct.AnnotationDefs = block.OfType<CapnpAnnotation>().ToArray();
+         @struct.Constants = block.OfType<CapnpConst>().ToArray();
+         @struct.Usings = block.OfType<CapnpUsing>().ToArray();
+         return @struct;
       }
 
       private CapnpInterface _ParseInterface()
       {
          var name = _ParseCapitalizedName();
 
-         var typeParameters = _OptParseGenericParameters();
+         // Push scope.
+         var @interface = new CapnpInterface();
+         var previousScope = _mCurrentScope;
+         _mCurrentScope = @interface;
+
+         var typeParameters = _OptParseGenericParameters().Select(n => new CapnpGenericParameter { Name = n }).ToArray();
 
          var id = _OptParseId();
 
@@ -360,21 +392,23 @@ namespace CapnProto.Schema.Parser
 
          _Advance("}");
 
-         return new CapnpInterface
-         {
-            Name = name,
-            Id = id,
-            TypeParameters = typeParameters,
-            Annotations = annotation.SingleOrEmpty(),
-            Methods = block.OfType<Method>().ToArray(),
-            BaseInterfaces = extendedIfaces == null ? Empty<CapnpType>.Array : extendedIfaces.ToArray(),
-            Structs = block.OfType<CapnpStruct>().ToArray(),
-            Interfaces = block.OfType<CapnpInterface>().ToArray(),
-            Enumerations = block.OfType<CapnpEnum>().ToArray(),
-            AnnotationDefs = block.OfType<CapnpAnnotation>().ToArray(),
-            Constants = block.OfType<CapnpConst>().ToArray(),
-            Usings = block.OfType<CapnpUsing>().ToArray()
-         };
+         // Pop scope.
+         _mCurrentScope = previousScope;
+
+         @interface.Name = name;
+         @interface.Scope = previousScope;
+         @interface.Id = id;
+         @interface.TypeParameters = typeParameters;
+         @interface.Annotations = annotation.SingleOrEmpty();
+         @interface.Methods = block.OfType<Method>().ToArray();
+         @interface.BaseInterfaces = extendedIfaces == null ? Empty<CapnpType>.Array : extendedIfaces.ToArray();
+         @interface.Structs = block.OfType<CapnpStruct>().ToArray();
+         @interface.Interfaces = block.OfType<CapnpInterface>().ToArray();
+         @interface.Enumerations = block.OfType<CapnpEnum>().ToArray();
+         @interface.AnnotationDefs = block.OfType<CapnpAnnotation>().ToArray();
+         @interface.Constants = block.OfType<CapnpConst>().ToArray();
+         @interface.Usings = block.OfType<CapnpUsing>().ToArray();
+         return @interface;
       }
 
       private String _ParseCapitalizedName()
@@ -393,9 +427,109 @@ namespace CapnProto.Schema.Parser
       {
          return _AdvanceExpr("[_a-zA-Z][_a-zA-Z0-9]*", "valid identifier");
       }
-      private String _ParseFullName()
+      //private String _ParseFullName()
+      //{
+      //   return _AdvanceExpr("[._a-zA-Z][._a-zA-Z0-9]*", "valid identifier");
+      //}
+
+      public FullName _ParseFullName()
       {
-         return _AdvanceExpr("[._a-zA-Z][._a-zA-Z0-9]*", "valid identifier");
+         if (_Peek(".")) // constref
+         {
+            var name = _AdvanceExpr("\\.[_a-zA-Z][_a-zA-Z0-9]*", "valid const ref");
+            return new FullName(new[] { new NamePart(name.Substring(1), null) }, isTopLevelConst: true);
+         }
+
+         var names = new List<NamePart>();
+         do
+         {
+            var name = _AdvanceExpr("[_a-zA-Z][_a-zA-Z0-9]*", "valid name");
+
+            List<FullName> typeParams = null;
+            if (name.IsCapitalized() && _OptAdvance("(")) // we have type parameters
+            {
+               typeParams = new List<FullName>();
+
+               do
+               {
+                  typeParams.Add(_ParseFullName());
+               }
+               while (_OptAdvance(","));
+
+               _Advance(")");
+            }
+
+            names.Add(new NamePart(name, typeParams == null ? null : typeParams.ToArray()));
+
+            if (!name.IsCapitalized()) break; // not a scope, so break
+         }
+         while (_OptAdvance("."));
+
+         // All parts except the last must be capitalized.
+         for (var i = 0; i < names.Count - 1; i++)
+            if (!names[i].Name.IsCapitalized()) _Error("name must be capitalized");
+
+         // todo: pass full raw string here, we have it ready (whitespace?)
+         return new FullName(names.ToArray());
+
+
+
+
+         //   if (String.IsNullOrWhiteSpace(fullName)) goto ERROR;
+
+         //   var pidx = fullName.IndexOf('.');
+         //   if (pidx < 0)
+         //   {
+         //      parsedName = new FullName(fullName, new[] { fullName }, 0);
+         //      return true;
+         //   }
+
+         //   if (pidx == 0) // global const ref
+         //   {
+         //      if (fullName.Length == 1) goto ERROR;
+         //      pidx = fullName.IndexOf('.', 1);
+         //      if (pidx >= 0) goto ERROR;
+         //      if (Char.IsUpper(fullName[1])) goto ERROR;
+         //      parsedName = new FullName(fullName, new[] { fullName.Substring(1) }, 0);
+         //      return true;
+         //   }
+
+         //   var count = 2;
+         //   for (pidx = fullName.IndexOf('.', pidx + 1); pidx >= 0; pidx = fullName.IndexOf('.', pidx + 1), count += 1) ;
+
+         //   var names = new String[count];
+         //   pidx = fullName.IndexOf('.');
+         //   names[0] = fullName.Substring(0, pidx);
+         //   for (var i = 1; i < count; i++)
+         //   {
+         //      var next = i == count - 1 ? fullName.Length : fullName.IndexOf('.', pidx + 1);
+
+         //      names[i] = fullName.Substring(pidx + 1, next - pidx - 1);
+         //      pidx = next;
+         //   }
+
+         //   // Validate.
+         //   for (var i = 0; i < names.Length - 1; i++)
+         //   {
+         //      if (names[i].Length == 0)
+         //         goto ERROR;
+
+         //      // This name must refer to a scope thus be capitalized.
+         //      if (!names[i].IsCapitalized())
+         //         goto ERROR;
+         //   }
+
+         //   // The last part can refer either to a type or something else.
+         //   var lastName = names[names.Length - 1];
+         //   if (lastName.Length == 0)
+         //      goto ERROR;
+
+         //   parsedName = new FullName(fullName, names, 0);
+         //   return true;
+
+         //ERROR:
+         //   parsedName = new FullName();
+         //   return false;
       }
 
       private IEnumerable<Object> _ParseBlock(Boolean isInterface)
@@ -493,18 +627,27 @@ namespace CapnProto.Schema.Parser
          _Advance("@", skipWhiteSpace: false);
          var number = _ParseInteger<Int32>();
 
-         var arguments = _AdvanceCommaSep<Parameter>("(", ")", _ParseParameter).ToArray();
+         if (_OptAdvance("["))
+            _Error("Generic methods not yet supported."); // todo
 
-         Parameter returnType = null;
+         // Somewhat odd syntax imo, anyway, support either (..) or a struct as parameter definition.
+         ParamOrStruct<Parameter[], CapnpType> arguments;
+         if (_Peek("("))
+            arguments = new ParamOrStruct<Parameter[], CapnpType>(_AdvanceCommaSep<Parameter>("(", ")", _ParseParameter).ToArray());
+         else
+            arguments = new ParamOrStruct<Parameter[], CapnpType>(_ParseType());
+
+         ParamOrStruct<Parameter[], CapnpType> returnType;
          if (_OptAdvance("->"))
          {
-            // have a return type
-            _Advance("(");
-
-            returnType = _ParseParameter();
-
-            _Advance(")");
+            if (_Peek("("))
+               returnType = new ParamOrStruct<Parameter[], CapnpType>(_AdvanceCommaSep<Parameter>("(", ")", _ParseParameter).ToArray());
+            else
+               returnType = new ParamOrStruct<Parameter[], CapnpType>(_ParseType());
          }
+         else
+            // No return type is effectively void.
+            returnType = new ParamOrStruct<Parameter[], CapnpType>(CapnpPrimitive.Void);
 
          var annotation = _OptParseAnnotation();
 
@@ -543,57 +686,68 @@ namespace CapnProto.Schema.Parser
 
       private CapnpType _ParseType()
       {
-         var text = _ParseFullName();
-
-         switch (text)
-         {
-            // Builtin types.
-            case "Int8": return CapnpPrimitive.Int8;
-            case "Int16": return CapnpPrimitive.Int16;
-            case "Int32": return CapnpPrimitive.Int32;
-            case "Int64": return CapnpPrimitive.Int64;
-            case "UInt8": return CapnpPrimitive.UInt8;
-            case "UInt16": return CapnpPrimitive.UInt16;
-            case "UInt32": return CapnpPrimitive.UInt32;
-            case "UInt64": return CapnpPrimitive.UInt64;
-            case "Float32": return CapnpPrimitive.Float32;
-            case "Float64": return CapnpPrimitive.Float64;
-            case "Text": return CapnpPrimitive.Text;
-            case "Data": return CapnpPrimitive.Data;
-            case "Void": return CapnpPrimitive.Void;
-            case "Bool": return CapnpPrimitive.Bool;
-            case "AnyPointer": return CapnpPrimitive.AnyPointer;
-
-            case "union": return _ParseGroupOrUnion(true);
-            case "group": return _ParseGroupOrUnion(false);
-
-            case "import": return _ParseImport();
-
-            case "List":
-               {
-                  _Advance("(");
-                  var result = new CapnpList { Parameter = _ParseType() };
-                  _Advance(")");
-                  return result;
-               }
-
-            default:
-               // Type may not yet be defined, so first return a reference which we'll resolve after parsing.
-               return new CapnpReference
-               {
-                  FullName = _GetFullName(text)
-               };
-         }
+         return _ParseTypeStr(_ParseFullName());
       }
 
-      private FullName _GetFullName(String fullName)
+      private CapnpType _ParseTypeStr(FullName fullName)
       {
-         // tood: the error here could be more descriptive
-         FullName result;
-         if (!FullName.TryParse(fullName, out result))
-            _Error("The given full name '{0}' is not valid.", fullName);
-         return result;
+         if (fullName.IsSimple)
+         {
+            if (_mCurrentScope is CapnpModule)
+            {
+               // Resolve this early. Could decide to defer this through a reference (?).
+               CapnpPrimitive primitive;
+               if (CapnpPrimitive.TryParse(fullName[0].Name, out primitive))
+                  return primitive;
+            }
+
+            switch (fullName[0].Name)
+            {
+               // Note: it is possible to nest such a type within a struct
+               // thus Int8 depends entirely on context!
+               //// Builtin types.
+               //case "Int8": return CapnpPrimitive.Int8;
+               //case "Int16": return CapnpPrimitive.Int16;
+               //case "Int32": return CapnpPrimitive.Int32;
+               //case "Int64": return CapnpPrimitive.Int64;
+               //case "UInt8": return CapnpPrimitive.UInt8;
+               //case "UInt16": return CapnpPrimitive.UInt16;
+               //case "UInt32": return CapnpPrimitive.UInt32;
+               //case "UInt64": return CapnpPrimitive.UInt64;
+               //case "Float32": return CapnpPrimitive.Float32;
+               //case "Float64": return CapnpPrimitive.Float64;
+               //case "Text": return CapnpPrimitive.Text;
+               //case "Data": return CapnpPrimitive.Data;
+               //case "Void": return CapnpPrimitive.Void;
+               //case "Bool": return CapnpPrimitive.Bool;
+               //case "AnyPointer": return CapnpPrimitive.AnyPointer;
+
+               case "union": return _ParseGroupOrUnion(true);
+               case "group": return _ParseGroupOrUnion(false);
+               case "import": return _ParseImport();
+
+               default: break;
+            }
+         }
+
+         // Todo: it's possible to override the List(T) type with a struct, should we not special case this?
+         if (fullName.Count == 1 && fullName[0].Name == "List" && fullName[0].TypeParameters.Length == 1)
+            return new CapnpList { Parameter = _ParseTypeStr(fullName[0].TypeParameters[0]) };
+
+         return new CapnpReference
+         {
+            FullName = fullName
+         };
       }
+
+      //private FullName _GetFullName(String fullName)
+      //{
+      //    tood: the error here could be more descriptive
+      //   FullName result;
+      //   if (!FullName.TryParse(fullName, out result))
+      //      _Error("The given full name '{0}' is not valid.", fullName);
+      //   return result;
+      //}
 
       private Field _ParseAnonymousUnion()
       {
@@ -606,6 +760,8 @@ namespace CapnProto.Schema.Parser
 
       private CapnpType _ParseGroupOrUnion(Boolean isUnion)
       {
+         var annotations = _OptParseAnnotation().SingleOrEmpty();
+
          _Advance("{");
 
          var flds = new List<Field>();
@@ -628,9 +784,9 @@ namespace CapnProto.Schema.Parser
          }
 
          if (isUnion)
-            return new CapnpUnion { Fields = flds.ToArray() };
+            return new CapnpUnion { Fields = flds.ToArray(), Annotations = annotations };
          else
-            return new CapnpGroup { Fields = flds.ToArray() };
+            return new CapnpGroup { Fields = flds.ToArray() }; // can these have annotations? todo
       }
 
       private Char _Unescape(Char c)
@@ -732,25 +888,35 @@ namespace CapnProto.Schema.Parser
          else if (_Peek("\"")) _ParseText();
          else if (_PeekExpr("\\d|-"))
          {
-            var negate = _OptAdvance("-");
-            if (_OptAdvance("inf")) return negate ? "-inf" : "inf";
-            if (_OptAdvance("nan"))
+            if (_Peek("0x\"")) _ParseBlob();
+            else
             {
-               if (negate) _Error("cannot negate nan"); // cant we? todo
-               return "nan";
+               var negate = _OptAdvance("-");
+               if (_OptAdvance("inf")) return negate ? "-inf" : "inf";
+               if (_OptAdvance("nan"))
+               {
+                  if (negate) _Error("cannot negate nan"); // cant we? todo
+                  return "nan";
+               }
+               _AdvanceExpr(@"(\d|-)(\.|[exa-fA-F]|\d|-)*", "valid number");
             }
-            _AdvanceExpr(@"(\d|-)(\.|[exa-fA-F]|\d|-)*", "valid number");
          }
          else
          {
-            var name = _ParseFullName();
-            if (name.Contains("."))
-               return name; // const ref
+            var fullName = _ParseFullName();
+
+            if (fullName.CouldBeConstRef)
+               // If it turns out it isnt a const ref it'll fail later on.
+               return fullName.ToString();
+
+            if (!fullName.IsSimple) _Error("Invalid fully qualified name at this location.");
+
+            var name = fullName[0].Name;
 
             if (name == "true" || name == "false" || name == "inf")
                return name;
 
-            // If a name it could be an enumeran.
+            // If a name it could be an enumerant.
             if (!_OptAdvance("="))
                return name;
 
@@ -765,7 +931,7 @@ namespace CapnProto.Schema.Parser
             }
          }
 
-         return _source.Substring(start, pos - start);
+         return _mSource.Substring(start, pos - start);
       }
 
       private Value _ParseDefaultValue(CapnpType type)
@@ -788,14 +954,18 @@ namespace CapnProto.Schema.Parser
          {
             if (type == CapnpPrimitive.Bool)
             {
-               var token = _ParseFullName();
+               var fullName = _ParseFullName();
 
-               if (token == "true") return new BoolValue { Value = true };
-               else if (token == "false") return new BoolValue { Value = false };
+               if (fullName.IsSimple)
+               {
+                  var token = fullName.ToString();
+                  if (token == "true") return new BoolValue { Value = true };
+                  else if (token == "false") return new BoolValue { Value = false };
+               }
 
                return new ConstRefValue(type)
                {
-                  FullConstName = _GetFullName(token)
+                  FullConstName = fullName
                };
             }
 
@@ -829,9 +999,10 @@ namespace CapnProto.Schema.Parser
                }
                else
                {
-                  var name = _ParseFullName();
+                  var fullName = _ParseFullName();
+                  var token = fullName.ToString();
 
-                  if (name == "inf")
+                  if (token == "inf")
                   {
                      if (type == CapnpPrimitive.Float32)
                         return new Float32Value { Value = Single.PositiveInfinity };
@@ -839,7 +1010,7 @@ namespace CapnProto.Schema.Parser
                         return new Float64Value { Value = Double.PositiveInfinity };
                      _Error("Uexpected token 'inf'");
                   }
-                  if (name == "nan")
+                  if (token == "nan")
                   {
                      if (type == CapnpPrimitive.Float32)
                         return new Float32Value { Value = Single.NaN };
@@ -848,33 +1019,40 @@ namespace CapnProto.Schema.Parser
                      _Error("unexpected token 'nan'");
                   }
 
-                  if (!name.Contains(".")) _Error("Invalid const reference");
+                  if (!fullName.CouldBeConstRef) _Error("Invalid const reference");
                   return new ConstRefValue(type)
                   {
-                     FullConstName = _GetFullName(name)
+                     FullConstName = fullName
                   };
                }
             }
 
             if (type == CapnpPrimitive.Void)
             {
-               var token = _ParseFullName();
-               if (token == "void") return new VoidValue();
-               return new ConstRefValue(type) { FullConstName = _GetFullName(token) };
+               var fullName = _ParseFullName();
+               // todo: these tostrings aren't necessary, provide some support instead
+               if (fullName.ToString() == "void") return new VoidValue();
+               return new ConstRefValue(type) { FullConstName = fullName };
             }
 
             if (type == CapnpPrimitive.Text)
             {
                if (_Peek("\""))
                   return new TextValue { Value = _ParseText() };
-               return new ConstRefValue(type) { FullConstName = _GetFullName(_ParseFullName()) };
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
             }
 
             if (type == CapnpPrimitive.Data)
             {
                if (_Peek("0x\""))
                   return new DataValue { Blob = _ParseBlob() };
-               return new ConstRefValue(type) { FullConstName = _GetFullName(_ParseFullName()) };
+               if (_Peek("\""))
+               {
+                  // It's possible to assign text as a blob.
+                  var text = _ParseText();
+                  return new DataValue { Blob = Encoding.UTF8.GetBytes(text) };
+               }
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
             }
 
             if (type == CapnpPrimitive.AnyPointer)
@@ -885,11 +1063,11 @@ namespace CapnProto.Schema.Parser
          else if (type is CapnpList)
          {
             if (!_OptAdvance("["))
-               return new ConstRefValue(type) { FullConstName = _GetFullName(_ParseFullName()) };
+               return new ConstRefValue(type) { FullConstName = _ParseFullName() };
 
             var listType = (CapnpList)type;
             var values = new List<Value>();
-            while (_source[pos] != ']')
+            while (_mSource[pos] != ']')
             {
                values.Add(_ParseDefaultValue(listType.Parameter));
                if (!_OptAdvance(",")) break;
@@ -902,48 +1080,101 @@ namespace CapnProto.Schema.Parser
          else if (type is CapnpEnum)
          {
             var @enum = (CapnpEnum)type;
-            var value = _ParseNonCapitalizedName();
-            var enumerant = @enum.Enumerants.Where(e => e.Name == value).Single(); // < todo
+            var fullName = _ParseFullName();  // _ParseNonCapitalizedName();
+
+            if (fullName.CouldBeConstRef)
+               return new ConstRefValue(type) { FullConstName = fullName };
+
+            if (!fullName.IsSimple) _Error("Invalid enumerant name.");
+
+            var token = fullName.ToString(); // todo, with below
+            if (token.IsCapitalized()) _Error("Invalid enumerant: must start with lower case");
+
+            var enumerant = @enum.Enumerants.Where(e => e.Name == token).Single(); // < todo
             return new EnumValue
             {
-               Name = value,
+               Name = token,
                Value = enumerant.Number
             };
          }
-         else if (type is CapnpStruct)
+         else if (type is CapnpStruct || type is CapnpUnion || type is CapnpBoundGenericType)
          {
             var canHaveConstRef = true;
 
             var defs = new Dictionary<String, Value>();
             while (true)
             {
-               var name = canHaveConstRef ? _ParseFullName() : _ParseNonCapitalizedName();
+               var fullName = _ParseFullName();
 
                // A const ref *always* contains a period.
-               if (name.Contains("."))
+               if (fullName.CouldBeConstRef)
                {
                   if (canHaveConstRef)
-                     return new ConstRefValue(type) { FullConstName = _GetFullName(name) };
+                     return new ConstRefValue(type) { FullConstName = fullName };
                   else
                      _Error("invalid field name");
                }
-               else if (Char.IsUpper(name[0]))
+               else if (!fullName.IsSimple || fullName[0].Name.IsCapitalized())
                   _Error("Field name in default value must start with a lower case letter.");
 
+               var name = fullName[0].Name;
                canHaveConstRef = false;
 
                _Advance("=");
 
                CapnpType fldType;
-               CapnpStruct @struct = (CapnpStruct)type;
 
-               fldType = @struct.Fields.Single(f => f.Name == name).Type; // todo error blah
+               // Same syntax as for structs, but one can define only a single field.
+               if (type is CapnpUnion)
+               {
+                  CapnpUnion union = (CapnpUnion)type;
+                  fldType = union.Fields.Single(f => f.Name == name).Type; // todo error
+                  return new UnionValue((CapnpUnion)type)
+                  {
+                     FieldName = name,
+                     Value = _ParseDefaultValue(fldType)
+                  };
+               }
+
+               CapnpBoundGenericType generic = type as CapnpBoundGenericType;
+               CapnpStruct @struct = generic == null ? (CapnpStruct)type : (CapnpStruct)generic.OpenType; // .. it must be a struct
+
+               // todo: we need to verify union names don't clash with their containing scope field names
+               // todo: unions within unions?
+               var structFields = @struct.Fields.Where(f => f.Name != null).Concat(
+                                  @struct.Fields.Where(f => f.Name == null).SelectMany(f => ((CapnpUnion)f.Type).Fields));
+
+               fldType = structFields.Single(f => f.Name == name).Type; // todo error blah
+
+               if (generic != null)
+               {
+                  if (fldType is CapnpGenericParameter)
+                  {
+                     fldType = generic.ResolveGenericParameter((CapnpGenericParameter)fldType);
+                     if (fldType == null) _Error("Cannot parse a default value for a generic type parameter type " + fldType);
+                  }
+
+                  // The field type comes from the open type, thus if it contains a closed generic type it may only be partially closed.
+                  // Within our fully closed generic scope we can resolve all parameters.
+                  if (fldType is CapnpBoundGenericType)
+                  {
+                     var genericFldType = (CapnpBoundGenericType)fldType;
+                     if (!genericFldType.IsFullyClosed)
+                     {
+                        // Resolve any generic parameters using their bindings from the given closed type.
+                        // Note: we do not require that the type is fully closed after this operation. It is possible that the default
+                        // value does not refer to any generic parameters (e.g. see innerBound in test.capnp).
+                        fldType = genericFldType.CloseWith(generic);
+                     }
+                  }
+               }
 
                defs.Add(name, _ParseDefaultValue(fldType));
                if (!_OptAdvance(",")) break;
             }
 
-            return new StructValue((CapnpStruct)type)
+            var finalStruct = type is CapnpStruct ? (CapnpStruct)type : (CapnpStruct)((CapnpBoundGenericType)type).OpenType;
+            return new StructValue(finalStruct) // todo
             {
                FieldValues = defs
             };
@@ -953,13 +1184,13 @@ namespace CapnProto.Schema.Parser
             var result = new UnresolvedValue(type)
             {
                Position = pos,
-               RawData = _ParseRawValue() // endIdx < 0 ? null : _source.Substring(pos, endIdx.Value - pos - 1)
+               RawData = _ParseRawValue()
             };
 
             return result;
          }
 
-         throw new Exception("todo: def value for " + type.GetType().FullName);
+         throw new InvalidOperationException("cannot parse a default value for type " + type.GetType().FullName);
       }
 
       private delegate Boolean TryParse<T>(String s, NumberStyles style, NumberFormatInfo i, out T result);
@@ -969,10 +1200,8 @@ namespace CapnProto.Schema.Parser
          T result;
          var isHex = false;
 
-         var text = "";
-         if (_OptAdvance("-"))
-            text = "-";
-         else if (_OptAdvance("0x", skipWhiteSpace: false)) // note: 0X explicitely not supported
+         var text = _OptAdvance("-") ? "-" : "";
+         if (_OptAdvance("0x", skipWhiteSpace: false)) // note: 0X explicitely not supported
          {
             isHex = true;
             text = _AdvanceExpr(_kHexRange.OneOrMore());
@@ -1069,6 +1298,7 @@ namespace CapnProto.Schema.Parser
          return new CapnpEnum
          {
             Name = name,
+            Scope = _mCurrentScope,
             Id = id,
             Annotations = annotation.SingleOrEmpty(),
             Enumerants = fields.ToArray()

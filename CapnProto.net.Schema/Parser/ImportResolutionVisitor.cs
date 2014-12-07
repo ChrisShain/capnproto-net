@@ -16,6 +16,8 @@ namespace CapnProto.Schema.Parser
 
       private CapnpType _ResolveImport(CapnpImport import)
       {
+         if (_GetImportContents == null) throw new Exception("import attempted but no way to resolve it");
+
          var source = _GetImportContents(import.File);
 
          var importedType = import.Type;
