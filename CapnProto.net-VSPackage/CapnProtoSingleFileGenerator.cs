@@ -39,22 +39,31 @@ namespace CapnProtonet.CapnProto_net_VSPackage
                             RedirectStandardInput = true,
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
+                            StandardOutputEncoding = Encoding.UTF8,
                         }, 
                 };
 
             capnpProcess.Start();
-            capnpProcess.StandardInput.Write(inputFileContents);
-
-            var stdOut = capnpProcess.StandardOutput.ReadToEnd();
-            var stdErr = capnpProcess.StandardError.ReadToEnd();
-            if (!String.IsNullOrEmpty(stdErr))
+            try
             {
-                return new UTF8Encoding(true).GetBytes(stdErr); 
+                capnpProcess.StandardInput.Write(inputFileContents);
+
+                var stdOut = capnpProcess.StandardOutput.ReadToEnd();
+                var stdErr = capnpProcess.StandardError.ReadToEnd();
+            
+                if (!String.IsNullOrEmpty(stdErr))
+                {
+                    return new UTF8Encoding(true).GetBytes(stdErr); 
+                }
+
+                stdOut = stdOut.Replace(CapnProto.Schema.CapnpPlugin.TemporaryNamespace, defaultNamespace);
+
+                return new UTF8Encoding(true).GetBytes(stdOut);
             }
-
-            capnpProcess.Close();
-
-            return new UTF8Encoding(true).GetBytes(stdOut);
+            finally 
+            {
+                capnpProcess.Close();
+            }
         }
     }
 }

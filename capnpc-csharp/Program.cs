@@ -9,6 +9,8 @@ namespace CapnProto.Schema
     /// </summary>
     public static class CapnpPlugin
     {
+        public const string TemporaryNamespace = "YourNamespace";
+
         public static int Process(Stream source, TextWriter destination, TextWriter errors)
         {
             try
@@ -18,7 +20,7 @@ namespace CapnProto.Schema
                     if (!msg.ReadNext()) throw new InvalidOperationException("Message on stdin not detected");
                     var req = (CodeGeneratorRequest)msg.Root;
 
-                    var codeWriter = new CSharpStructWriter(destination, req.nodes, "YourNamespace");
+                    var codeWriter = new CSharpStructWriter(destination, req.nodes, TemporaryNamespace);
                     req.GenerateCustomModel(codeWriter);
                     return 0;
                 }
